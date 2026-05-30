@@ -69,3 +69,10 @@ def test_solve_reports_tool_calls_via_on_tool_call(tmp_path):
     assert name == "write_file"
     assert kwargs == {"path": "a.txt", "content": "hi"}
     assert "a.txt" in result
+
+
+def test_harness_resolves_tavily_key_from_env(tmp_path, monkeypatch):
+    monkeypatch.setenv("TAVILY_API_KEY", "env-key-123")
+    from harness import Harness, HarnessConfig
+    h = Harness(HarnessConfig(root_dir=tmp_path / "r"))
+    assert h.config.search.api_key == "env-key-123"

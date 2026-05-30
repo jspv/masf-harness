@@ -15,6 +15,7 @@ from .fetch import fetch_url as _fetch_url
 from .files import list_files as _list_files, read_file as _read_file, write_file as _write_file
 from .inspect import inspect_handle as _inspect_handle
 from .search import search as _search
+from .web import web_extract as _web_extract, web_search as _web_search
 
 
 def build_tools(session: Session) -> list:
@@ -51,4 +52,14 @@ def build_tools(session: Session) -> list:
         """Deeper look at a handle: more preview / head rows (and describe() if stats=True)."""
         return _inspect_handle(session, handle_id, rows, stats)
 
-    return [read_file, write_file, list_files, search, fetch_url, run_python, inspect_handle]
+    def web_search(query: str, max_results: int = 5) -> dict:
+        """Search the web. Returns an answer + ranked results [{title,url,content,score}].
+        Use the result urls with fetch_url or web_extract to read a page."""
+        return _web_search(session, query, max_results)
+
+    def web_extract(url: str) -> dict:
+        """Fetch a URL's clean content via the search provider; returns a markdown handle."""
+        return _web_extract(session, url)
+
+    return [read_file, write_file, list_files, search, fetch_url, run_python, inspect_handle,
+            web_search, web_extract]

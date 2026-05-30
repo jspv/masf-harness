@@ -30,8 +30,12 @@ def _default_client(cfg: FetchConfig) -> httpx.Client:
 
 
 def fetch_url(session: Session, url: str, max_bytes: int | None = None,
-              client: httpx.Client | None = None) -> dict:
+              raw: bool = False, client: httpx.Client | None = None) -> dict:
     """Fetch ``url`` and store its body as a handle (json if JSON content-type, else text).
+
+    HTML responses are converted to clean markdown via trafilatura (stripping nav, footer,
+    ads, and other boilerplate) unless ``raw=True`` is passed, in which case the raw HTML
+    text is stored unchanged.
 
     Returns the handle summary on success, or ``{"error", "status", "url"}`` on an HTTP
     error / network failure. Follows redirects and sends a browser User-Agent. Enforces
@@ -59,14 +63,18 @@ def fetch_url(session: Session, url: str, max_bytes: int | None = None,
         body = resp.content
         truncated = len(body) > limit
         content_type = resp.headers.get("content-type", "")
+        text = body[:limit].decode(resp.encoding or "utf-8", errors="replace")
+
         if "json" in content_type and not truncated:
             handle = session.store.put(resp.json(), source=f"fetch_url({url})", kind="json")
+        elif "html" in content_type and not raw:
+            import trafilatura
+            md = trafilatura.extract(text, output_format="markdown")
+            stored = md if md else text  # fall back to raw text if extraction yields nothing
+            handle = session.store.put(stored, source=f"fetch_url({url})", kind="text")
         else:
-            # Truncate (rather than fail) so an over-large page still yields something the
-            # agent can search/inspect. JSON over the cap is stored as text (can't parse a
-            # partial document).
-            text = body[:limit].decode(resp.encoding or "utf-8", errors="replace")
             handle = session.store.put(text, source=f"fetch_url({url})", kind="text")
+
         summary = handle.summary()
         if truncated:
             summary["truncated"] = True

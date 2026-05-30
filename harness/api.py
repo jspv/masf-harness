@@ -27,6 +27,11 @@ class Harness:
         self.config = config or HarnessConfig()
         self._client = client
         self.session = Session.create(self.config)
+        if self.config.search.api_key is None:
+            from dotenv import load_dotenv
+            load_dotenv()
+            import os
+            self.config.search.api_key = os.environ.get("TAVILY_API_KEY")
 
     def _make_client(self):
         if self._client is not None:
