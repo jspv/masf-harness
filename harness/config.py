@@ -23,6 +23,14 @@ class FetchConfig:
 
 
 @dataclass
+class SearchConfig:
+    provider: str = "tavily"
+    api_key: str | None = None
+    max_results: int = 5
+    timeout_s: float = 20.0
+
+
+@dataclass
 class HarnessConfig:
     model: str = "gpt-4o-mini"
     spill_threshold_bytes: int = 8192
@@ -31,3 +39,4 @@ class HarnessConfig:
     root_dir: Path | None = None  # None -> a session dir is created under ./.harness/sessions/
     sandbox: SandboxConfig = field(default_factory=SandboxConfig)
     fetch: FetchConfig = field(default_factory=FetchConfig)
+    search: SearchConfig = field(default_factory=SearchConfig)
