@@ -25,3 +25,5 @@ work/
 work*/
 pricing_run*/
 evals/runs/
+evals/results/
+evals/run.log

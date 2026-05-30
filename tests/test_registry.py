@@ -31,7 +31,12 @@ def test_wrapped_tools_keep_docstrings(tmp_path):
 def test_wrapped_tools_actually_work(tmp_path):
     sess = _session(tmp_path)
     tools = {t.__name__: t for t in build_tools(sess)}
-    tools["write_file"]("a.txt", "hello\n")
-    assert tools["read_file"]("a.txt") == "hello\n"
+    tools["write_file"]("a.txt", "hello\nworld\n")
+    assert tools["read_file"]("a.txt") == "hello\nworld\n"
     out = tools["run_python"](code="from harness_sandbox import emit\nemit(5)\n")
     assert out["result"] == 5
+    # search via the wrapped closure (regression: the package re-export shadowed the
+    # `search` submodule, so the closure called the function as if it were a module).
+    hits = tools["search"]("world", path="a.txt")
+    assert hits and hits[0]["line"] == 2
+    assert tools["list_files"](".") and "a.txt" in tools["list_files"](".")

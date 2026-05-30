@@ -78,6 +78,20 @@ def test_rg_and_python_backends_agree(tmp_path):
     assert rg_m[0]["col"] == 4  # 'aaé ' is 4 characters
 
 
+def test_long_matching_line_is_clipped(tmp_path):
+    # Minified-HTML style: a single enormous line. The hit text must be bounded so a
+    # search result can't flood the model context.
+    from harness.tools.files import write_file
+
+    sess = _session(tmp_path)
+    write_file(sess, "min.html", "x" * 100_000 + "NEEDLE" + "y" * 100_000)
+    hits = search(sess, "NEEDLE")
+    assert len(hits) == 1
+    assert len(hits[0]["text"]) <= 300        # clipped, not 200k chars
+    assert "NEEDLE" in hits[0]["text"]         # window is centered on the match
+    assert hits[0]["text"].startswith("…")     # truncation markers present
+
+
 def test_one_hit_per_line_even_with_multiple_matches(tmp_path):
     from harness.tools.files import write_file
 

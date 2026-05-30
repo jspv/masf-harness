@@ -10,6 +10,19 @@ from pathlib import Path
 from ..paths import safe_path
 from ..session import Session
 
+_SNIPPET_WIDTH = 240  # cap each hit's text so a single huge line can't flood context
+
+
+def _snippet(line: str, col: int) -> str:
+    """A bounded window of ``line`` centered on ``col`` (minified one-line files can be
+    hundreds of KB; returning the whole matching line would blow the model's context)."""
+    line = line.rstrip("\n")
+    if len(line) <= _SNIPPET_WIDTH:
+        return line
+    start = max(0, col - _SNIPPET_WIDTH // 2)
+    end = start + _SNIPPET_WIDTH
+    return ("…" if start > 0 else "") + line[start:end] + ("…" if end < len(line) else "")
+
 
 def search(session: Session, pattern: str, path: str = ".", glob: str | None = None,
            ignore_case: bool = False, max_matches: int = 100) -> list[dict]:
@@ -64,7 +77,7 @@ def _search_rg(rg: str, root: Path, base: Path, pattern: str, glob: str | None,
             "file": rel,
             "line": data["line_number"],
             "col": char_col,
-            "text": line_text.rstrip("\n"),
+            "text": _snippet(line_text, char_col),
         })
     return hits
 
@@ -92,7 +105,7 @@ def _search_python(root: Path, base: Path, pattern: str, ignore_case: bool,
                     "file": f.relative_to(root).as_posix(),
                     "line": lineno,
                     "col": m.start(),
-                    "text": line,
+                    "text": _snippet(line, m.start()),
                 })
                 if len(hits) >= max_matches:
                     return hits
