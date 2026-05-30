@@ -18,6 +18,10 @@ dev = [
     "ruff>=0.6",
 ]
 
+[tool.uv]
+# agent-framework-core is a prerelease; pin the mode so `uv run` doesn't re-resolve each call.
+prerelease = "allow"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
