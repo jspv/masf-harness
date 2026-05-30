@@ -14,7 +14,14 @@ def safe_path(root: Path | str, candidate: Path | str) -> Path:
 
     ``.resolve()`` normalizes ``..`` and follows symlinks, so a symlink inside
     the root that points outside is caught here rather than exploited.
+
+    An empty/whitespace-only ``candidate`` is rejected: a file tool receiving it
+    signals an upstream bug, not a request for the root. Note: a symlink *loop*
+    inside the root is not rejected (it stays inside root, so it is not an escape);
+    the OS raises ``OSError`` (ELOOP) when the returned path is later opened.
     """
+    if not str(candidate).strip():
+        raise PathEscapesRootError("empty candidate path")
     root_resolved = Path(root).resolve()
     p = Path(candidate)
     if not p.is_absolute():
