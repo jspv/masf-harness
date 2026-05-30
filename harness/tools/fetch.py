@@ -8,6 +8,8 @@ ordinary anti-bot pages don't 403 a bare client.
 
 from __future__ import annotations
 
+import mimetypes
+import os
 from urllib.parse import urlparse
 
 import httpx
@@ -19,6 +21,7 @@ _USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 )
+_TEXTUAL = ("json", "xml", "html", "csv", "javascript")
 
 
 def _default_client(cfg: FetchConfig) -> httpx.Client:
@@ -27,6 +30,29 @@ def _default_client(cfg: FetchConfig) -> httpx.Client:
         follow_redirects=True,
         headers={"User-Agent": _USER_AGENT},
     )
+
+
+def _is_binary(content_type: str, body: bytes) -> bool:
+    """True if the payload should be stored as raw bytes (xls/pdf/image/zip/...) rather than
+    decoded as text. Textual content-types pass through; otherwise sniff a utf-8 decode."""
+    ct = content_type.lower()
+    if ct.startswith("text/") or any(k in ct for k in _TEXTUAL):
+        return False
+    try:
+        body[:8192].decode("utf-8")
+        return False
+    except UnicodeDecodeError:
+        return True
+
+
+def _ext_for(url: str, content_type: str) -> str:
+    """Best-effort file extension for a binary handle: prefer the URL suffix, else the
+    content-type's registered extension, else ``.bin``."""
+    suffix = os.path.splitext(urlparse(url).path)[1]
+    if suffix and len(suffix) <= 6:
+        return suffix
+    guessed = mimetypes.guess_extension((content_type or "").split(";")[0].strip())
+    return guessed or ".bin"
 
 
 def fetch_url(session: Session, url: str, max_bytes: int | None = None,
@@ -61,8 +87,19 @@ def fetch_url(session: Session, url: str, max_bytes: int | None = None,
                     "status": resp.status_code, "url": str(resp.url)}
 
         body = resp.content
-        truncated = len(body) > limit
         content_type = resp.headers.get("content-type", "")
+
+        # Binary payloads (xls/pdf/image/zip/...) are stored as raw bytes so they stay
+        # readable by pandas/Docling; decoding them as text would corrupt the file.
+        if _is_binary(content_type, body):
+            if len(body) > limit:
+                return {"error": f"binary response ({len(body)} bytes) exceeds max_bytes "
+                                 f"({limit}); call again with a larger max_bytes", "url": url}
+            handle = session.store.put(body, source=f"fetch_url({url})", kind="binary",
+                                       ext=_ext_for(url, content_type))
+            return handle.summary()
+
+        truncated = len(body) > limit
         text = body[:limit].decode(resp.encoding or "utf-8", errors="replace")
 
         if "json" in content_type and not truncated:

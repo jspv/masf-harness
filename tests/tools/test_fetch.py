@@ -150,3 +150,31 @@ def test_fetch_non_html_text_unchanged(tmp_path):
 
     summary = fetch_url(sess, "https://example.com/p.txt", client=_client(handler))
     assert sess.store.get(summary["id"]) == "just plain text"
+
+
+def test_fetch_binary_xls_is_stored_intact(tmp_path):
+    # An .xls (OLE2 magic) must be stored as raw bytes, not mangled into a text handle.
+    sess = _session(tmp_path)
+    xls_bytes = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\x00\x01\x02\x03" * 50
+
+    def handler(request):
+        return httpx.Response(200, content=xls_bytes,
+                              headers={"content-type": "application/vnd.ms-excel"})
+
+    summary = fetch_url(sess, "http://x.com/data.xls", client=_client(handler))
+    assert summary["kind"] == "binary"
+    assert summary["path"].endswith(".xls")          # extension preserved from the URL
+    from pathlib import Path
+    assert Path(sess.store.get(summary["id"])).read_bytes() == xls_bytes  # bytes intact
+
+
+def test_fetch_binary_detected_by_content_sniff(tmp_path):
+    # Generic content-type, but the bytes don't decode as utf-8 -> treat as binary.
+    sess = _session(tmp_path)
+    blob = bytes(range(256)) * 4  # not valid utf-8
+
+    def handler(request):
+        return httpx.Response(200, content=blob, headers={"content-type": "application/octet-stream"})
+
+    summary = fetch_url(sess, "http://x.com/blob", client=_client(handler))
+    assert summary["kind"] == "binary"

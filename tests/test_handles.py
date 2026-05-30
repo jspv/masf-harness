@@ -11,6 +11,26 @@ def test_put_and_get_json_roundtrip(tmp_path):
     assert store.get(h.id) == {"a": 1, "b": [1, 2, 3]}
 
 
+def test_bytes_autodetect_binary_kind(tmp_path):
+    store = HandleStore(tmp_path)
+    h = store.put(b"\x00\x01\x02 raw bytes", source="s")
+    assert h.kind == "binary"
+
+
+def test_put_and_get_binary_preserves_bytes_and_returns_path(tmp_path):
+    from pathlib import Path
+
+    store = HandleStore(tmp_path)
+    data = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1 fake xls bytes \x00\x01"
+    h = store.put(data, source="fetch_url(x.xls)", kind="binary", ext=".xls")
+    assert h.kind == "binary"
+    assert h.path.endswith(".xls")            # extension preserved for pandas/Docling
+    assert "binary" in h.preview.lower()       # no garbled text preview
+    p = store.get(h.id)                         # binary get() returns the file path (str)
+    assert isinstance(p, str)
+    assert Path(p).read_bytes() == data         # bytes intact, not mangled
+
+
 def test_put_and_get_text_roundtrip(tmp_path):
     store = HandleStore(tmp_path)
     h = store.put("hello world", source="tool:x")

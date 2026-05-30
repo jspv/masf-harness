@@ -42,7 +42,7 @@ def write_file(session: Session, path: str, content: str) -> str:
 
 def list_files(session: Session, path: str = ".") -> list[str]:
     """List files (recursively) under ``path`` as root-relative POSIX paths."""
-    base = safe_path(session.root, path)
+    base = safe_path(session.root, path or ".")  # "" / None -> the root
     if base.is_file():
         return [base.relative_to(session.root).as_posix()]
     out: list[str] = []

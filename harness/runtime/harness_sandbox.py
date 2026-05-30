@@ -32,6 +32,8 @@ def load(handle_id: str) -> Any:
         return pd.read_parquet(path)
     if kind == "json":
         return json.loads(path.read_text(encoding="utf-8"))
+    if kind == "binary":
+        return str(path)  # binary file: hand back the path to open with pandas/Docling/etc.
     return path.read_text(encoding="utf-8")
 
 

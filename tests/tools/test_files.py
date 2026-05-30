@@ -59,6 +59,13 @@ def test_read_rejects_path_outside_root(tmp_path):
         read_file(sess, "/etc/passwd")
 
 
+def test_list_files_empty_path_means_root(tmp_path):
+    # A model passing "" for "current dir" should get the root listing, not an error.
+    sess = _session(tmp_path)
+    write_file(sess, "a.txt", "1")
+    assert "a.txt" in list_files(sess, "")
+
+
 def test_list_files_returns_relative_paths(tmp_path):
     sess = _session(tmp_path)
     write_file(sess, "a.txt", "1")

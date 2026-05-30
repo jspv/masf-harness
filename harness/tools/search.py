@@ -31,7 +31,7 @@ def search(session: Session, pattern: str, path: str = ".", glob: str | None = N
     Returns up to ``max_matches`` hits as ``{"file", "line", "col", "text"}`` with
     ``file`` relative to the session root. Uses ripgrep if installed, else a Python scan.
     """
-    base = safe_path(session.root, path)
+    base = safe_path(session.root, path or ".")  # "" / None -> the root
     rg = shutil.which("rg")
     if rg:
         return _search_rg(rg, session.root, base, pattern, glob, ignore_case, max_matches)

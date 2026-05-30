@@ -54,10 +54,12 @@ class HandleStore:
             return "json"
         if isinstance(obj, str):
             return "text"
+        if isinstance(obj, (bytes, bytearray)):
+            return "binary"
         raise TypeError(f"unsupported handle object type: {type(obj)!r}")
 
     def put(self, obj: Any, source: str, *, id: str | None = None,
-            kind: str | None = None) -> Handle:
+            kind: str | None = None, ext: str | None = None) -> Handle:
         hid = id or self._new_id()
         if id is not None:
             self._advance_counter(hid)  # keep auto-ids from colliding with an explicit id
@@ -68,10 +70,22 @@ class HandleStore:
             handle = self._write_json(hid, obj, source)
         elif kind == "text":
             handle = self._write_text(hid, obj, source)
+        elif kind == "binary":
+            handle = self._write_binary(hid, obj, source, ext)
         else:
             raise ValueError(f"unknown handle kind: {kind!r}")
         self._handles[hid] = handle
         return handle
+
+    def _write_binary(self, hid: str, data: bytes, source: str, ext: str | None) -> Handle:
+        # Store raw bytes intact so the file (xls/pdf/image/...) stays readable by pandas,
+        # Docling, etc. The extension is preserved so libraries can infer the format.
+        rel = f"handles/{hid}{ext or '.bin'}"
+        (self.root / rel).write_bytes(bytes(data))
+        return Handle(
+            id=hid, kind="binary", path=rel, source=source,
+            bytes=len(data), preview=f"<binary file, {len(data)} bytes, {ext or '.bin'}>",
+        )
 
     def _write_dataframe(self, hid: str, df: Any, source: str) -> Handle:
         rel = f"handles/{hid}.parquet"
@@ -142,6 +156,8 @@ class HandleStore:
             return pd.read_parquet(path)
         if handle.kind == "json":
             return json.loads(path.read_text(encoding="utf-8"))
+        if handle.kind == "binary":
+            return str(path)  # binary content is opened by a library; hand back the path
         return path.read_text(encoding="utf-8")
 
     def summary(self, handle_id: str) -> dict[str, Any]:
