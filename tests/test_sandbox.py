@@ -167,3 +167,77 @@ def test_run_code_convenience_writes_and_runs_inline(tmp_path):
     sb, _ = _sandbox(tmp_path)
     res = sb.run_code("from harness_sandbox import emit\nemit(7)\n")
     assert res.result == 7
+
+
+# --- robustness: a misbehaving child must yield an ExecResult, never raise ---
+
+def test_malformed_emit_payload_is_graceful(tmp_path):
+    sb, _ = _sandbox(tmp_path)
+    # Child exits 0 but writes garbage directly to the emit file.
+    (tmp_path / "s.py").write_text(
+        "import os\nopen(os.environ['HARNESS_EMIT'], 'w').write('{not json')\n"
+    )
+    res = sb.run_script("s.py")  # must not raise
+    assert res.exit_code == 0
+    assert res.result is None
+    assert "malformed emit" in res.error
+
+
+def test_corrupt_handle_line_is_skipped_not_fatal(tmp_path):
+    sb, store = _sandbox(tmp_path)
+    # One good handle, then a corrupt jsonl line appended directly.
+    (tmp_path / "s.py").write_text(
+        "import os\n"
+        "from harness_sandbox import save\n"
+        "save('h1', {'ok': 1})\n"
+        "open(os.environ['HARNESS_NEW_HANDLES'], 'a').write('{bad json\\n')\n"
+    )
+    res = sb.run_script("s.py")  # must not raise
+    assert res.new_handles == ["h1"]      # good one reported
+    assert store.get("h1") == {"ok": 1}   # and registered
+    assert res.exit_code == 0
+
+
+def test_dataframe_roundtrip_through_sandbox(tmp_path):
+    import pandas as pd
+
+    sb, store = _sandbox(tmp_path)
+    store.put(pd.DataFrame({"revenue": [120, 0, 210, 0, 95]}), source="seed", id="h1")
+    (tmp_path / "s.py").write_text(
+        "from harness_sandbox import load, save, emit\n"
+        "df = load('h1')\n"
+        "clean = df[df.revenue > 0]\n"
+        "save('h2', clean)\n"
+        "emit({'total': int(clean.revenue.sum()), 'dropped': int((df.revenue <= 0).sum())})\n"
+    )
+    res = sb.run_script("s.py")
+    assert res.result == {"total": 425, "dropped": 2}
+    assert res.new_handles == ["h2"]
+    assert list(store.get("h2").revenue) == [120, 210, 95]
+
+
+def test_emits_nothing_yields_none_result_and_no_error(tmp_path):
+    sb, _ = _sandbox(tmp_path)
+    (tmp_path / "s.py").write_text("x = 1 + 1\n")
+    res = sb.run_script("s.py")
+    assert res.exit_code == 0
+    assert res.result is None
+    assert res.error is None
+
+
+def test_stderr_on_success_is_captured_without_setting_error(tmp_path):
+    sb, _ = _sandbox(tmp_path)
+    (tmp_path / "s.py").write_text("import sys\nsys.stderr.write('just a warning')\n")
+    res = sb.run_script("s.py")
+    assert res.exit_code == 0
+    assert "just a warning" in res.stderr
+    assert res.error is None
+
+
+def test_inline_scripts_do_not_collide_across_instances(tmp_path):
+    store = HandleStore(tmp_path)
+    sb_a = LocalSubprocessSandbox(root=tmp_path, store=store, config=SandboxConfig())
+    sb_b = LocalSubprocessSandbox(root=tmp_path, store=store, config=SandboxConfig())
+    res_a = sb_a.run_code("from harness_sandbox import emit\nemit('A')\n")
+    res_b = sb_b.run_code("from harness_sandbox import emit\nemit('B')\n")
+    assert (res_a.result, res_b.result) == ("A", "B")
