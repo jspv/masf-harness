@@ -30,3 +30,22 @@ def test_stub_records_tool_results_seen(tmp_path):
     agent = build_agent(sess, sess.config, client)
     run_agent_sync(agent, "write a file")
     assert (sess.root / "a.txt").read_text() == "hi"
+
+
+def test_large_external_tool_result_is_spilled_during_run(tmp_path):
+    sess = _session(tmp_path)
+
+    def big_source() -> dict:
+        "Return a large dataset."
+        return {"rows": list(range(5000))}  # well over the 8 KB spill threshold
+
+    client = StubChatClient([tool_call("big_source", {}), text("Got the data.")])
+    agent = build_agent(sess, sess.config, client, extra_tools=[big_source])
+    run_agent_sync(agent, "fetch the big dataset")
+
+    # The external tool's large result was spilled to a handle during the run.
+    handles = sess.store.manifest_handles()
+    assert len(handles) == 1
+    (h,) = handles.values()
+    assert h.kind == "json"
+    assert sess.store.get(h.id) == {"rows": list(range(5000))}

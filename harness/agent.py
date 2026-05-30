@@ -8,7 +8,7 @@ from agent_framework import create_harness_agent
 
 from .config import HarnessConfig
 from .session import Session
-from .spill import make_spill_middleware
+from .spill import wrap_external_tools
 from .tools.registry import build_tools
 
 
@@ -43,8 +43,9 @@ def build_agent(session: Session, config: HarnessConfig, client, extra_tools: li
         client,
         name="data-integrator",
         agent_instructions=AGENT_INSTRUCTIONS,
-        tools=build_tools(session) + list(extra_tools or []),
-        middleware=[make_spill_middleware(session)],
+        # Built-in tools manage their own output; external tools get spill-wrapped so
+        # oversized raw returns become handles before reaching the model.
+        tools=build_tools(session) + wrap_external_tools(session, extra_tools),
         max_context_window_tokens=config.max_context_window_tokens,
         max_output_tokens=config.max_output_tokens,
         disable_todo=True,

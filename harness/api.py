@@ -39,10 +39,23 @@ class Harness:
         return Result(
             final_text=resp.text,
             handles=self.session.store.manifest(),
-            files=[p.relative_to(self.session.root).as_posix()
-                   for p in sorted(self.session.root.rglob("*")) if p.is_file()],
+            files=self._user_files(),
             session_dir=self.session.root,
         )
+
+    def _user_files(self) -> list[str]:
+        """User-meaningful files written during the run, excluding internal scratch
+        (handle storage, inline scripts, control files)."""
+        out: list[str] = []
+        for p in sorted(self.session.root.rglob("*")):
+            if not p.is_file():
+                continue
+            rel = p.relative_to(self.session.root)
+            top = rel.parts[0]
+            if top in ("handles", ".scripts") or top.startswith("_"):
+                continue
+            out.append(rel.as_posix())
+        return out
 
 
 def solve(problem: str, *, tools: list | None = None,
