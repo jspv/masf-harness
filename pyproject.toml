@@ -1,0 +1,10 @@
+[project]
+name = "harness-spike"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.12"
+dependencies = [
+    "agent-framework-core>=1.7.0",
+    "agent-framework-openai>=1.7.0",
+    "opentelemetry-sdk>=1.42.1",
+]
