@@ -1,4 +1,5 @@
 import pandas as pd
+import pytest
 
 from harness.handles import Handle, HandleStore
 
@@ -50,6 +51,26 @@ def test_files_are_written_under_root_handles_dir(tmp_path):
     h = store.put({"a": 1}, source="s")
     assert (tmp_path / h.path).exists()
     assert h.path.startswith("handles/")
+
+
+def test_get_unknown_id_raises_keyerror_with_message(tmp_path):
+    store = HandleStore(tmp_path)
+    with pytest.raises(KeyError, match="no handle with id"):
+        store.get("nope")
+
+
+def test_explicit_id_advances_counter_no_collision(tmp_path):
+    store = HandleStore(tmp_path)
+    store.put("seed", source="s", id="h3")   # explicit id
+    nxt = store.put("auto", source="s")       # next auto-id must not reuse h1..h3
+    assert nxt.id == "h4"
+    assert store.get("h3") == "seed"          # explicit handle not overwritten
+
+
+def test_register_invalid_record_raises_valueerror(tmp_path):
+    store = HandleStore(tmp_path)
+    with pytest.raises(ValueError, match="invalid handle record"):
+        store.register({"id": "h1", "bogus": True})  # missing required fields
 
 
 def test_register_external_record_round_trips(tmp_path):

@@ -57,6 +57,8 @@ class HandleStore:
     def put(self, obj: Any, source: str, *, id: str | None = None,
             kind: str | None = None) -> Handle:
         hid = id or self._new_id()
+        if id is not None:
+            self._advance_counter(hid)  # keep auto-ids from colliding with an explicit id
         kind = kind or self._detect_kind(obj)
         if kind == "dataframe":
             handle = self._write_dataframe(hid, obj, source)
@@ -83,10 +85,12 @@ class HandleStore:
         )
 
     def _write_json(self, hid: str, obj: Any, source: str) -> Handle:
+        # ``default=str`` keeps non-JSON-native types (datetime, Decimal, ...) from
+        # crashing serialization, but they round-trip back as strings via get().
         rel = f"handles/{hid}.json"
         path = self.root / rel
         text = json.dumps(obj, default=str)
-        path.write_text(text)
+        path.write_text(text, encoding="utf-8")
         return Handle(
             id=hid, kind="json", path=rel, source=source,
             bytes=len(text.encode()), preview=text[:_PREVIEW_CHARS],
@@ -95,30 +99,39 @@ class HandleStore:
     def _write_text(self, hid: str, obj: str, source: str) -> Handle:
         rel = f"handles/{hid}.txt"
         path = self.root / rel
-        path.write_text(obj)
+        path.write_text(obj, encoding="utf-8")
         return Handle(
             id=hid, kind="text", path=rel, source=source,
             bytes=len(obj.encode()), preview=obj[:_PREVIEW_CHARS],
         )
 
+    def _advance_counter(self, hid: str) -> None:
+        """Keep the auto-id counter ahead of an externally-supplied ``h<N>`` id."""
+        if hid.startswith("h") and hid[1:].isdigit():
+            self._counter = max(self._counter, int(hid[1:]))
+
     def register(self, record: dict[str, Any]) -> Handle:
         """Register a handle whose file already exists (e.g. written by the sandbox child)."""
-        handle = Handle(**record)
+        try:
+            handle = Handle(**record)
+        except TypeError as e:  # cross-process contract boundary — give a useful message
+            raise ValueError(f"invalid handle record {record!r}: {e}") from e
         self._handles[handle.id] = handle
-        # keep the counter ahead of externally-created ids like "h7"
-        if handle.id.startswith("h") and handle.id[1:].isdigit():
-            self._counter = max(self._counter, int(handle.id[1:]))
+        self._advance_counter(handle.id)
         return handle
 
     def get(self, handle_id: str) -> Any:
-        handle = self._handles[handle_id]
+        try:
+            handle = self._handles[handle_id]
+        except KeyError:
+            raise KeyError(f"no handle with id {handle_id!r}") from None
         path = self.root / handle.path
         if handle.kind == "dataframe":
             import pandas as pd
             return pd.read_parquet(path)
         if handle.kind == "json":
-            return json.loads(path.read_text())
-        return path.read_text()
+            return json.loads(path.read_text(encoding="utf-8"))
+        return path.read_text(encoding="utf-8")
 
     def summary(self, handle_id: str) -> dict[str, Any]:
         return self._handles[handle_id].summary()
