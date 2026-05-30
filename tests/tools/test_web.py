@@ -34,6 +34,18 @@ def test_web_search_returns_answer_and_results(tmp_path):
     assert out["results"][0]["title"] == "Pricing"
 
 
+def test_web_search_sends_bearer_auth_header(tmp_path):
+    sess = _session(tmp_path, api_key="tvly-abc")
+    seen = {}
+
+    def handler(request):
+        seen["auth"] = request.headers.get("authorization")
+        return httpx.Response(200, json={"answer": None, "results": []})
+
+    web_search(sess, "q", client=_client(handler))
+    assert seen["auth"] == "Bearer tvly-abc"
+
+
 def test_web_search_clips_long_snippets(tmp_path):
     sess = _session(tmp_path)
 
