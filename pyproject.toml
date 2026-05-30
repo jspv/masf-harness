@@ -12,6 +12,9 @@ dependencies = [
     "httpx>=0.27",
 ]
 
+[project.scripts]
+harness = "harness.cli:main"
+
 [dependency-groups]
 dev = [
     "pytest>=8.0",

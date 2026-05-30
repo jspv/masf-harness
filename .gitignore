@@ -19,3 +19,11 @@ wheels/
 
 # Harness session artifacts
 .harness/
+
+# Demo / eval run workspaces
+work/
+work*/
+pricing_run*/
+evals/runs/
+evals/results/
+evals/run.log

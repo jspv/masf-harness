@@ -243,6 +243,33 @@ def test_inline_scripts_do_not_collide_across_instances(tmp_path):
     assert (res_a.result, res_b.result) == ("A", "B")
 
 
+def test_last_expression_is_auto_emitted(tmp_path):
+    # The model can write a bare expression (Jupyter style) and get a result back,
+    # without knowing about emit().
+    sb, _ = _sandbox(tmp_path)
+    res = sb.run_code("x = 40\nx + 2\n")
+    assert res.result == 42
+
+
+def test_print_falls_back_to_stdout_when_no_emit(tmp_path):
+    sb, _ = _sandbox(tmp_path)
+    res = sb.run_code("print('the answer is 144')\n")
+    assert res.result == "the answer is 144"
+
+
+def test_explicit_emit_takes_precedence_over_last_expr(tmp_path):
+    sb, _ = _sandbox(tmp_path)
+    res = sb.run_code("from harness_sandbox import emit\nemit(1)\n2 + 2\n")
+    assert res.result == 1
+
+
+def test_last_expression_can_load_a_handle(tmp_path):
+    sb, store = _sandbox(tmp_path)
+    store.put({"v": [1, 2, 3]}, source="seed", id="h1")
+    res = sb.run_code("from harness_sandbox import load\nsum(load('h1')['v'])\n")
+    assert res.result == 6
+
+
 def test_dataframe_preview_matches_between_parent_and_child(tmp_path):
     # The child's save() duplicates HandleStore's dataframe preview logic; they must
     # produce an identical preview for the same frame (guards against contract drift).
