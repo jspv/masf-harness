@@ -40,3 +40,17 @@ def test_solve_accepts_extra_user_tools(tmp_path):
     client = StubChatClient([tool_call("my_source", {}), text("Got it.")])
     Harness(cfg, client=client).solve("call my_source", tools=[my_source])
     assert calls["n"] == 1
+
+
+def test_solve_reports_tool_calls_via_on_tool_call(tmp_path):
+    cfg = HarnessConfig(root_dir=tmp_path / "r")
+    client = StubChatClient([tool_call("write_file", {"path": "a.txt", "content": "hi"}),
+                             text("done")])
+    seen = []
+    Harness(cfg, client=client).solve("write a file",
+                                      on_tool_call=lambda n, k, r: seen.append((n, k, r)))
+    assert len(seen) == 1
+    name, kwargs, result = seen[0]
+    assert name == "write_file"
+    assert kwargs == {"path": "a.txt", "content": "hi"}
+    assert "a.txt" in result

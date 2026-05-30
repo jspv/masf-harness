@@ -33,8 +33,9 @@ class Harness:
         from agent_framework.openai import OpenAIChatClient
         return OpenAIChatClient(model=self.config.model, env_file_path=".env")
 
-    def solve(self, problem: str, tools: list | None = None) -> Result:
-        agent = build_agent(self.session, self.config, self._make_client(), extra_tools=tools)
+    def solve(self, problem: str, tools: list | None = None, on_tool_call=None) -> Result:
+        agent = build_agent(self.session, self.config, self._make_client(),
+                            extra_tools=tools, on_tool_call=on_tool_call)
         resp = run_agent_sync(agent, problem)
         return Result(
             final_text=resp.text,
@@ -59,6 +60,7 @@ class Harness:
 
 
 def solve(problem: str, *, tools: list | None = None,
-          config: HarnessConfig | None = None, client: Any | None = None) -> Result:
+          config: HarnessConfig | None = None, client: Any | None = None,
+          on_tool_call=None) -> Result:
     """One-shot convenience: build a Harness and solve a single problem."""
-    return Harness(config, client=client).solve(problem, tools=tools)
+    return Harness(config, client=client).solve(problem, tools=tools, on_tool_call=on_tool_call)

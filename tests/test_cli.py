@@ -15,3 +15,16 @@ def test_run_cli_prints_answer(tmp_path, capsys):
     assert code == 0
     out = capsys.readouterr().out
     assert "Done: wrote a.txt" in out
+
+
+def test_verbose_prints_tool_calls_and_code(tmp_path, capsys):
+    client = StubChatClient([
+        tool_call("run_python", {"code": "print('hi from sandbox')"}),
+        text("All done."),
+    ])
+    run_cli(["compute something", "--root", str(tmp_path / "r"), "--verbose"], client=client)
+    out = capsys.readouterr().out
+    assert "→ run_python(" in out                 # the tool call is shown
+    assert "print('hi from sandbox')" in out       # the code is shown
+    assert "← " in out                             # the result line is shown
+    assert "All done." in out                      # final answer still printed

@@ -23,6 +23,7 @@ from .handles import HandleStore
 from .paths import safe_path
 
 _RUNTIME_DIR = Path(__file__).resolve().parent / "runtime"
+_RUNNER = _RUNTIME_DIR / "_runner.py"
 _SCRIPTS_DIR = ".scripts"
 
 
@@ -91,8 +92,9 @@ class LocalSubprocessSandbox:
 
             killed_by = None
             try:
+                # Run via _runner so a bare last expression is auto-captured as the result.
                 proc = subprocess.run(
-                    [sys.executable, str(script), *argv],
+                    [sys.executable, str(_RUNNER), str(script), *argv],
                     cwd=self.root, env=env, capture_output=True, text=True,
                     timeout=self.config.timeout_s, preexec_fn=self._limits(),
                 )
@@ -112,6 +114,12 @@ class LocalSubprocessSandbox:
                     result = json.loads(emit_file.read_text(encoding="utf-8"))
                 except json.JSONDecodeError as e:
                     emit_error = f"harness: malformed emit payload: {e}"
+
+            # Ergonomic fallback: if the script neither emitted nor ended in an
+            # expression but printed something, surface that as the result so a model
+            # that just print()s an answer still gets one back.
+            if result is None and emit_error is None and exit_code == 0 and stdout.strip():
+                result = stdout.strip()
 
             new_handles = self._ingest_new_handles(new_handles_file)
 
