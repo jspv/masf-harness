@@ -36,6 +36,12 @@ def _search_rg(rg: str, root: Path, base: Path, pattern: str, glob: str | None,
     proc = subprocess.run(cmd, cwd=root, capture_output=True, text=True)
     import json
 
+    # rg exit codes: 0 = match, 1 = no match, >=2 = error (e.g. invalid regex).
+    # Surface errors the same way the Python fallback does, instead of silently
+    # returning [] only when rg happens to be installed.
+    if proc.returncode >= 2:
+        raise ValueError(proc.stderr.strip() or "ripgrep search failed")
+
     hits: list[dict] = []
     for line in proc.stdout.splitlines():
         if len(hits) >= max_matches:
@@ -49,22 +55,27 @@ def _search_rg(rg: str, root: Path, base: Path, pattern: str, glob: str | None,
         data = evt["data"]
         abs_path = Path(data["path"]["text"])
         rel = abs_path.relative_to(root).as_posix() if abs_path.is_absolute() else (root / abs_path).relative_to(root).as_posix()
-        for sub in data["submatches"]:
-            if len(hits) >= max_matches:
-                break
-            hits.append({
-                "file": rel,
-                "line": data["line_number"],
-                "col": sub["start"],
-                "text": data["lines"]["text"].rstrip("\n"),
-            })
+        # One hit per matching line (first submatch), with a CHARACTER column, to
+        # match the Python fallback exactly. rg reports a byte offset, so convert it.
+        line_text = data["lines"]["text"]
+        sub = data["submatches"][0]
+        char_col = len(line_text.encode("utf-8")[:sub["start"]].decode("utf-8", errors="ignore"))
+        hits.append({
+            "file": rel,
+            "line": data["line_number"],
+            "col": char_col,
+            "text": line_text.rstrip("\n"),
+        })
     return hits
 
 
 def _search_python(root: Path, base: Path, pattern: str, ignore_case: bool,
                    max_matches: int, glob: str | None = None) -> list[dict]:
     flags = re.IGNORECASE if ignore_case else 0
-    rx = re.compile(pattern, flags)
+    try:
+        rx = re.compile(pattern, flags)
+    except re.error as e:  # match the rg path: invalid regex -> ValueError
+        raise ValueError(f"invalid search pattern: {e}") from e
     files = [base] if base.is_file() else sorted(
         p for p in base.rglob(glob or "*") if p.is_file()
     )

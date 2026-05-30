@@ -22,6 +22,21 @@ def test_read_is_bounded_by_limit_and_offset(tmp_path):
     assert out == "line10\nline11\nline12\n"
 
 
+def test_read_past_eof_returns_empty(tmp_path):
+    sess = _session(tmp_path)
+    write_file(sess, "a.txt", "one\ntwo\n")
+    assert read_file(sess, "a.txt", offset=100) == ""
+
+
+def test_read_rejects_negative_offset_or_limit(tmp_path):
+    sess = _session(tmp_path)
+    write_file(sess, "a.txt", "one\ntwo\n")
+    with pytest.raises(ValueError):
+        read_file(sess, "a.txt", offset=-1)
+    with pytest.raises(ValueError):
+        read_file(sess, "a.txt", limit=-1)
+
+
 def test_write_rejects_path_outside_root(tmp_path):
     sess = _session(tmp_path)
     with pytest.raises(PathEscapesRootError):

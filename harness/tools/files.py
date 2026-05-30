@@ -12,6 +12,8 @@ _DEFAULT_LIMIT = 2000
 
 def read_file(session: Session, path: str, offset: int = 0, limit: int = _DEFAULT_LIMIT) -> str:
     """Read up to ``limit`` lines starting at line ``offset`` from a file under the root."""
+    if offset < 0 or limit < 0:
+        raise ValueError("offset and limit must be non-negative")
     target = safe_path(session.root, path)
     lines = target.read_text(encoding="utf-8").splitlines(keepends=True)
     return "".join(lines[offset:offset + limit])

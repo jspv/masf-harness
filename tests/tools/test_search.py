@@ -57,3 +57,39 @@ def test_python_fallback_matches_directly(tmp_path):
     _seed(sess)
     hits = _search_python(sess.root, sess.root, "alpha", ignore_case=False, max_matches=100)
     assert {h["file"] for h in hits} == {"a.txt", "sub/b.txt"}
+
+
+def test_rg_and_python_backends_agree(tmp_path):
+    # The two backends must return identical results (guards env-dependent drift):
+    # one hit per matching line, char-offset col, same text.
+    from harness.tools.files import write_file
+
+    sess = _session(tmp_path)
+    write_file(sess, "p.txt", "xx xx xx\naaé match here\nnothing\nxx again\n")
+
+    rg_hits = search(sess, "xx")  # rg path (installed on this machine)
+    py_hits = _search_python(sess.root, sess.root, "xx", ignore_case=False, max_matches=100)
+    assert rg_hits == py_hits
+
+    # Non-ASCII line: col is a CHARACTER offset on both backends.
+    rg_m = search(sess, "match")
+    py_m = _search_python(sess.root, sess.root, "match", ignore_case=False, max_matches=100)
+    assert rg_m == py_m
+    assert rg_m[0]["col"] == 4  # 'aaé ' is 4 characters
+
+
+def test_one_hit_per_line_even_with_multiple_matches(tmp_path):
+    from harness.tools.files import write_file
+
+    sess = _session(tmp_path)
+    write_file(sess, "m.txt", "xx xx xx\n")
+    assert len(search(sess, "xx")) == 1  # one hit for the line, not three
+
+
+def test_invalid_regex_raises_valueerror(tmp_path):
+    from harness.tools.files import write_file
+
+    sess = _session(tmp_path)
+    write_file(sess, "a.txt", "hello\n")
+    with pytest.raises(ValueError):
+        search(sess, "(unclosed")  # invalid on both rg and Python backends
