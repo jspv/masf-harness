@@ -105,3 +105,48 @@ def test_default_client_has_user_agent_and_follows_redirects(tmp_path):
         assert "Mozilla" in c.headers["user-agent"]
     finally:
         c.close()
+
+
+_HTML_PAGE = (
+    "<html><head><title>T</title></head><body>"
+    "<nav>Home About Contact Login Signup</nav>"
+    "<article><h1>Pricing Details</h1>"
+    "<p>Our flagship model costs 5 dollars per million input tokens.</p>"
+    "<p>Output tokens are billed at 25 dollars per million.</p>"
+    "<p>Batch processing gives a 50 percent discount on all usage.</p></article>"
+    "<footer>Copyright 2026. Cookie banner here. Terms of service.</footer></body></html>"
+)
+
+
+def test_fetch_html_is_converted_to_clean_markdown(tmp_path):
+    sess = _session(tmp_path)
+
+    def handler(request):
+        return httpx.Response(200, text=_HTML_PAGE, headers={"content-type": "text/html"})
+
+    summary = fetch_url(sess, "https://example.com/pricing", client=_client(handler))
+    body = sess.store.get(summary["id"])
+    assert "flagship model costs 5 dollars" in body
+    assert "Cookie banner" not in body
+    assert "Signup" not in body
+    assert "<article>" not in body
+
+
+def test_fetch_html_raw_flag_keeps_raw(tmp_path):
+    sess = _session(tmp_path)
+
+    def handler(request):
+        return httpx.Response(200, text=_HTML_PAGE, headers={"content-type": "text/html"})
+
+    summary = fetch_url(sess, "https://example.com/pricing", raw=True, client=_client(handler))
+    assert "<article>" in sess.store.get(summary["id"])
+
+
+def test_fetch_non_html_text_unchanged(tmp_path):
+    sess = _session(tmp_path)
+
+    def handler(request):
+        return httpx.Response(200, text="just plain text", headers={"content-type": "text/plain"})
+
+    summary = fetch_url(sess, "https://example.com/p.txt", client=_client(handler))
+    assert sess.store.get(summary["id"]) == "just plain text"
