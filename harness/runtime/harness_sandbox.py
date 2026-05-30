@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 _ROOT = Path(os.environ["HARNESS_ROOT"])
-_REGISTRY = json.loads(Path(os.environ["HARNESS_REGISTRY"]).read_text())
+_REGISTRY = json.loads(Path(os.environ["HARNESS_REGISTRY"]).read_text(encoding="utf-8"))
 _NEW = Path(os.environ["HARNESS_NEW_HANDLES"])
 _EMIT = Path(os.environ["HARNESS_EMIT"])
 
@@ -31,8 +31,8 @@ def load(handle_id: str) -> Any:
         import pandas as pd
         return pd.read_parquet(path)
     if kind == "json":
-        return json.loads(path.read_text())
-    return path.read_text()
+        return json.loads(path.read_text(encoding="utf-8"))
+    return path.read_text(encoding="utf-8")
 
 
 def save(handle_id: str, obj: Any, source: str = "run_python") -> str:
@@ -49,13 +49,13 @@ def save(handle_id: str, obj: Any, source: str = "run_python") -> str:
     elif isinstance(obj, (dict, list)):
         rel = f"handles/{handle_id}.json"
         text = json.dumps(obj, default=str)
-        (_ROOT / rel).write_text(text)
+        (_ROOT / rel).write_text(text, encoding="utf-8")
         rec = {"id": handle_id, "kind": "json", "path": rel, "source": source,
                "bytes": len(text.encode()), "preview": text[:_PREVIEW_CHARS]}
     else:
         rel = f"handles/{handle_id}.txt"
         text = str(obj)
-        (_ROOT / rel).write_text(text)
+        (_ROOT / rel).write_text(text, encoding="utf-8")
         rec = {"id": handle_id, "kind": "text", "path": rel, "source": source,
                "bytes": len(text.encode()), "preview": text[:_PREVIEW_CHARS]}
 
@@ -65,4 +65,4 @@ def save(handle_id: str, obj: Any, source: str = "run_python") -> str:
 
 
 def emit(obj: Any) -> None:
-    _EMIT.write_text(json.dumps(obj, default=str))
+    _EMIT.write_text(json.dumps(obj, default=str), encoding="utf-8")
