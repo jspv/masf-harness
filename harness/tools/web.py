@@ -46,3 +46,29 @@ def web_search(session: Session, query: str, max_results: int = 5,
     finally:
         if owns:
             client.close()
+
+
+def web_extract(session: Session, url: str, client: httpx.Client | None = None) -> dict:
+    """Fetch a URL's clean content via Tavily /extract, store it as a markdown handle, and
+    return the handle summary. Returns a structured error on failure."""
+    cfg = session.config.search
+    if not cfg.api_key:
+        return {"error": "web extract unavailable: set TAVILY_API_KEY in .env"}
+    owns = client is None
+    client = client or httpx.Client(timeout=cfg.timeout_s)
+    try:
+        try:
+            resp = client.post(_EXTRACT_URL, json={"api_key": cfg.api_key, "urls": [url]})
+        except httpx.HTTPError as e:
+            return {"error": f"extract request failed: {e}", "url": url}
+        if resp.is_error:
+            return {"error": f"extract HTTP {resp.status_code}", "status": resp.status_code, "url": url}
+        results = resp.json().get("results", [])
+        if not results:
+            return {"error": "no content extracted", "url": url}
+        content = results[0].get("raw_content") or results[0].get("content") or ""
+        handle = session.store.put(content, source=f"web_extract({url})", kind="text")
+        return handle.summary()
+    finally:
+        if owns:
+            client.close()

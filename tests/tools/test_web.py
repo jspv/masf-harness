@@ -61,3 +61,38 @@ def test_web_search_http_error_is_structured(tmp_path):
     out = web_search(sess, "q", client=_client(handler))
     assert out["status"] == 401
     assert "error" in out
+
+
+from harness.tools.web import web_extract
+
+
+def test_web_extract_stores_markdown_handle(tmp_path):
+    sess = _session(tmp_path)
+
+    def handler(request):
+        assert request.url.path == "/extract"
+        return httpx.Response(200, json={
+            "results": [{"url": "https://x.com/p", "raw_content": "# Pricing\n\n$5 per million"}],
+            "failed_results": [],
+        })
+
+    out = web_extract(sess, "https://x.com/p", client=_client(handler))
+    assert out["kind"] == "text"
+    assert sess.store.get(out["id"]) == "# Pricing\n\n$5 per million"
+
+
+def test_web_extract_no_content_returns_error(tmp_path):
+    sess = _session(tmp_path)
+
+    def handler(request):
+        return httpx.Response(200, json={"results": [], "failed_results": [{"url": "https://x"}]})
+
+    out = web_extract(sess, "https://x", client=_client(handler))
+    assert "error" in out
+    assert out["url"] == "https://x"
+
+
+def test_web_extract_missing_key_returns_error(tmp_path):
+    sess = _session(tmp_path, api_key=None)
+    out = web_extract(sess, "https://x")
+    assert "error" in out and "TAVILY_API_KEY" in out["error"]
