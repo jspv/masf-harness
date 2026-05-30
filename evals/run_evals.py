@@ -3,7 +3,7 @@ tasks, record the tool-call trace + final answer + any error per task, and write
 result file each task completes so progress can be inspected live.
 
 Run: uv run python evals/run_evals.py [task_id ...]   (no args = all)
-Requires OPENAI_API_KEY in .env (uses gpt-4o-mini).
+Requires OPENAI_API_KEY in .env (uses gpt-5-mini).
 """
 
 import json
@@ -15,7 +15,7 @@ from harness import Harness, HarnessConfig
 
 RESULTS = Path(__file__).resolve().parent / "results"
 RUNS = Path(__file__).resolve().parent / "runs"
-MODEL = "gpt-4o-mini"
+MODEL = "gpt-5-mini"
 
 
 def _short(value, limit=400):

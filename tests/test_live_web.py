@@ -11,7 +11,7 @@ pytestmark = pytest.mark.skipif(
 
 
 def test_live_web_research_pricing(tmp_path):
-    cfg = HarnessConfig(root_dir=tmp_path / "r", model="gpt-4o-mini")
+    cfg = HarnessConfig(root_dir=tmp_path / "r", model="gpt-5-mini")
     result = Harness(cfg).solve(
         "What are the current OpenAI API prices for their flagship model "
         "(input/output per million tokens)? Use web search and cite a source URL."

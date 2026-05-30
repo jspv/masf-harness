@@ -32,7 +32,7 @@ class SearchConfig:
 
 @dataclass
 class HarnessConfig:
-    model: str = "gpt-4o-mini"
+    model: str = "gpt-5-mini"
     spill_threshold_bytes: int = 8192
     max_context_window_tokens: int = 128_000
     max_output_tokens: int = 4096

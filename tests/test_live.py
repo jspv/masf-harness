@@ -11,7 +11,7 @@ pytestmark = pytest.mark.skipif(
 
 
 def test_live_gather_act_verify(tmp_path):
-    cfg = HarnessConfig(root_dir=tmp_path / "r", model="gpt-4o-mini")
+    cfg = HarnessConfig(root_dir=tmp_path / "r", model="gpt-5-mini")
     h = Harness(cfg)
     h.session.store.put({"sales": [120, 0, 210, 0, 95]}, source="seed", id="h1")
     result = h.solve(

@@ -3,9 +3,9 @@ from harness.testing import StubChatClient, tool_call, text
 
 
 def test_parser_reads_problem_and_model(tmp_path):
-    args = build_parser().parse_args(["do a thing", "--model", "gpt-4o-mini"])
+    args = build_parser().parse_args(["do a thing", "--model", "gpt-5-mini"])
     assert args.problem == "do a thing"
-    assert args.model == "gpt-4o-mini"
+    assert args.model == "gpt-5-mini"
 
 
 def test_run_cli_prints_answer(tmp_path, capsys):

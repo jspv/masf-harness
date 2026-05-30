@@ -3,7 +3,7 @@ from harness.config import FetchConfig, HarnessConfig, SandboxConfig
 
 def test_defaults_are_sensible():
     cfg = HarnessConfig()
-    assert cfg.model == "gpt-4o-mini"
+    assert cfg.model == "gpt-5-mini"
     assert cfg.spill_threshold_bytes == 8192
     assert isinstance(cfg.sandbox, SandboxConfig)
     assert isinstance(cfg.fetch, FetchConfig)
