@@ -138,3 +138,6 @@ class HandleStore:
 
     def manifest(self) -> dict[str, Any]:
         return {hid: h.summary() for hid, h in self._handles.items()}
+
+    def manifest_handles(self) -> dict[str, Handle]:
+        return dict(self._handles)
