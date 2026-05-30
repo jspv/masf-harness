@@ -241,3 +241,26 @@ def test_inline_scripts_do_not_collide_across_instances(tmp_path):
     res_a = sb_a.run_code("from harness_sandbox import emit\nemit('A')\n")
     res_b = sb_b.run_code("from harness_sandbox import emit\nemit('B')\n")
     assert (res_a.result, res_b.result) == ("A", "B")
+
+
+def test_dataframe_preview_matches_between_parent_and_child(tmp_path):
+    # The child's save() duplicates HandleStore's dataframe preview logic; they must
+    # produce an identical preview for the same frame (guards against contract drift).
+    import pandas as pd
+
+    df = pd.DataFrame({"a": list(range(10))})  # >5 rows -> truncation suffix expected
+
+    parent_store = HandleStore(tmp_path / "p")
+    parent_handle = parent_store.put(df, source="s")
+
+    child_store = HandleStore(tmp_path / "c")
+    sb = LocalSubprocessSandbox(root=tmp_path / "c", store=child_store, config=SandboxConfig())
+    child_store.put(df, source="seed", id="hin")
+    (tmp_path / "c" / "s.py").write_text(
+        "from harness_sandbox import load, save\nsave('hout', load('hin'))\n"
+    )
+    sb.run_script("s.py")
+    child_handle = child_store.manifest_handles()["hout"]
+
+    assert child_handle.preview == parent_handle.preview
+    assert "5 of 10 rows" in child_handle.preview  # suffix present on both sides

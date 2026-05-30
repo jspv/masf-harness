@@ -73,6 +73,17 @@ def test_register_invalid_record_raises_valueerror(tmp_path):
         store.register({"id": "h1", "bogus": True})  # missing required fields
 
 
+def test_register_rejects_path_escaping_root(tmp_path):
+    # The child supplies `path`; a record pointing outside root must be rejected
+    # so the trusted parent never reads an arbitrary file via get().
+    store = HandleStore(tmp_path)
+    rec = {"id": "h1", "kind": "text", "path": "../secret_outside.txt",
+           "source": "run_python", "bytes": 5, "preview": "x"}
+    with pytest.raises(ValueError, match="escapes root"):
+        store.register(rec)
+    assert "h1" not in store.manifest_handles()  # not registered
+
+
 def test_register_external_record_round_trips(tmp_path):
     # Simulates the subprocess helper having written a file + metadata record.
     store = HandleStore(tmp_path)

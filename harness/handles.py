@@ -7,6 +7,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from .paths import PathEscapesRootError, safe_path
+
 _PREVIEW_CHARS = 800
 _PREVIEW_ROWS = 5
 
@@ -111,11 +113,20 @@ class HandleStore:
             self._counter = max(self._counter, int(hid[1:]))
 
     def register(self, record: dict[str, Any]) -> Handle:
-        """Register a handle whose file already exists (e.g. written by the sandbox child)."""
+        """Register a handle whose file already exists (e.g. written by the sandbox child).
+
+        The ``path`` is supplied by the lower-trust child over the jsonl channel, so it
+        is run through ``safe_path``: a record pointing outside the root is rejected here
+        rather than letting the trusted parent later read an arbitrary file.
+        """
         try:
             handle = Handle(**record)
         except TypeError as e:  # cross-process contract boundary — give a useful message
             raise ValueError(f"invalid handle record {record!r}: {e}") from e
+        try:
+            safe_path(self.root, handle.path)
+        except PathEscapesRootError as e:
+            raise ValueError(f"handle record path escapes root: {record!r}") from e
         self._handles[handle.id] = handle
         self._advance_counter(handle.id)
         return handle
@@ -125,7 +136,7 @@ class HandleStore:
             handle = self._handles[handle_id]
         except KeyError:
             raise KeyError(f"no handle with id {handle_id!r}") from None
-        path = self.root / handle.path
+        path = safe_path(self.root, handle.path)  # defense-in-depth before any read
         if handle.kind == "dataframe":
             import pandas as pd
             return pd.read_parquet(path)

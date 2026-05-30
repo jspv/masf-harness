@@ -41,7 +41,11 @@ def save(handle_id: str, obj: Any, source: str = "run_python") -> str:
     if isinstance(obj, pd.DataFrame):
         rel = f"handles/{handle_id}.parquet"
         obj.to_parquet(_ROOT / rel)
+        # Preview must match HandleStore._write_dataframe exactly (kept in sync by hand;
+        # the child cannot import the harness package). See tests for parity check.
         preview = obj.head(_PREVIEW_ROWS).to_csv(index=False)
+        if len(obj) > _PREVIEW_ROWS:
+            preview += f"... ({_PREVIEW_ROWS} of {len(obj)} rows)"
         rec = {"id": handle_id, "kind": "dataframe", "path": rel, "source": source,
                "bytes": (_ROOT / rel).stat().st_size, "preview": preview,
                "schema": {c: str(t) for c, t in obj.dtypes.items()},
