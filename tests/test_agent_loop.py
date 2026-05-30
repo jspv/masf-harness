@@ -1,7 +1,5 @@
-import asyncio
-
 from harness import HarnessConfig, Session
-from harness.agent import build_agent
+from harness.agent import build_agent, run_agent_sync
 from harness.testing import StubChatClient, tool_call, text
 
 
@@ -21,7 +19,7 @@ def test_agent_runs_gather_act_verify_over_real_tools(tmp_path):
         text("The total of valid sales is 425."),
     ]
     agent = build_agent(sess, sess.config, StubChatClient(script))
-    resp = asyncio.run(agent.run("Total the valid sales in h1."))
+    resp = run_agent_sync(agent, "Total the valid sales in h1.")
     assert "425" in resp.text
 
 
@@ -30,5 +28,5 @@ def test_stub_records_tool_results_seen(tmp_path):
     client = StubChatClient([tool_call("write_file", {"path": "a.txt", "content": "hi"}),
                              text("done")])
     agent = build_agent(sess, sess.config, client)
-    asyncio.run(agent.run("write a file"))
+    run_agent_sync(agent, "write a file")
     assert (sess.root / "a.txt").read_text() == "hi"

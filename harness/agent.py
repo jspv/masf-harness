@@ -2,12 +2,29 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from agent_framework import create_harness_agent
 
 from .config import HarnessConfig
 from .session import Session
 from .spill import make_spill_middleware
 from .tools.registry import build_tools
+
+
+def run_agent_sync(agent, prompt: str):
+    """Run ``agent.run(prompt)`` synchronously, telemetry-safe.
+
+    MAF's observability layer sets a ContextVar token when ``agent.run()`` is invoked
+    and resets it as the coroutine completes. Passing ``agent.run(...)`` straight to
+    ``asyncio.run`` evaluates it in the *outer* context, so the token is set there but
+    reset inside the Task's copied context -> ValueError. Calling ``agent.run`` *inside*
+    the coroutine keeps set and reset in the same context, so instrumentation stays on.
+    """
+    async def _run():
+        return await agent.run(prompt)
+
+    return asyncio.run(_run())
 
 AGENT_INSTRUCTIONS = (
     "You solve data-gathering and integration tasks. "
