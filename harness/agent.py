@@ -47,14 +47,22 @@ def _instrument(fn: Callable, on_tool_call: Callable[[str, dict, Any], None]) ->
     if inspect.iscoroutinefunction(fn):
         @functools.wraps(fn)
         async def awrapper(*args: Any, **kwargs: Any) -> Any:
-            result = await fn(*args, **kwargs)
+            try:
+                result = await fn(*args, **kwargs)
+            except Exception as e:  # report the failure, then let it propagate
+                on_tool_call(name, kwargs, e)
+                raise
             on_tool_call(name, kwargs, result)
             return result
         return awrapper
 
     @functools.wraps(fn)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
-        result = fn(*args, **kwargs)
+        try:
+            result = fn(*args, **kwargs)
+        except Exception as e:  # report the failure, then let it propagate
+            on_tool_call(name, kwargs, e)
+            raise
         on_tool_call(name, kwargs, result)
         return result
     return wrapper

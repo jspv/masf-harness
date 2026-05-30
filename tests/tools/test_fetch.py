@@ -53,11 +53,51 @@ def test_fetch_rejects_body_over_max_bytes(tmp_path):
         fetch_url(sess, "https://example.com/big", client=_client(handler))
 
 
-def test_fetch_raises_on_http_error_status(tmp_path):
+def test_fetch_returns_structured_error_on_http_error(tmp_path):
+    # 4xx/5xx is data the model can adapt to, not a crash.
     sess = _session(tmp_path)
 
     def handler(request):
-        return httpx.Response(404, text="nope")
+        return httpx.Response(403, text="forbidden")
 
-    with pytest.raises(httpx.HTTPStatusError):
-        fetch_url(sess, "https://example.com/missing", client=_client(handler))
+    out = fetch_url(sess, "https://example.com/blocked", client=_client(handler))
+    assert out["status"] == 403
+    assert "error" in out
+    assert out["url"] == "https://example.com/blocked"
+    assert sess.store.manifest_handles() == {}  # nothing stored on error
+
+
+def test_fetch_returns_structured_error_on_network_failure(tmp_path):
+    sess = _session(tmp_path)
+
+    def handler(request):
+        raise httpx.ConnectError("boom")
+
+    out = fetch_url(sess, "https://example.com/down", client=_client(handler))
+    assert out["status"] is None
+    assert "request failed" in out["error"]
+
+
+def test_fetch_follows_redirects(tmp_path):
+    sess = _session(tmp_path)
+
+    def handler(request):
+        if request.url.path == "/old":
+            return httpx.Response(301, headers={"location": "https://example.com/new"})
+        return httpx.Response(200, text="final page", headers={"content-type": "text/plain"})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler), follow_redirects=True)
+    summary = fetch_url(sess, "https://example.com/old", client=client)
+    assert summary["kind"] == "text"
+    assert sess.store.get(summary["id"]) == "final page"
+
+
+def test_default_client_has_user_agent_and_follows_redirects(tmp_path):
+    from harness.tools.fetch import _default_client
+
+    c = _default_client(HarnessConfig().fetch)
+    try:
+        assert c.follow_redirects is True
+        assert "Mozilla" in c.headers["user-agent"]
+    finally:
+        c.close()

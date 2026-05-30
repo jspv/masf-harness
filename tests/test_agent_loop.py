@@ -32,6 +32,24 @@ def test_stub_records_tool_results_seen(tmp_path):
     assert (sess.root / "a.txt").read_text() == "hi"
 
 
+def test_instrument_reports_tool_failures_then_reraises():
+    import pytest
+
+    from harness.agent import _instrument
+
+    seen = []
+
+    def boom(x: int) -> int:
+        "Boom."
+        raise ValueError("nope")
+
+    wrapped = _instrument(boom, lambda name, kwargs, result: seen.append((name, result)))
+    with pytest.raises(ValueError):
+        wrapped(x=1)
+    assert seen and seen[0][0] == "boom"
+    assert isinstance(seen[0][1], ValueError)  # the failure was reported to the hook
+
+
 def test_large_external_tool_result_is_spilled_during_run(tmp_path):
     sess = _session(tmp_path)
 
