@@ -57,14 +57,21 @@ def fetch_url(session: Session, url: str, max_bytes: int | None = None,
                     "status": resp.status_code, "url": str(resp.url)}
 
         body = resp.content
-        if len(body) > limit:
-            raise ValueError(f"response body ({len(body)} bytes) exceeds max_bytes ({limit})")
+        truncated = len(body) > limit
         content_type = resp.headers.get("content-type", "")
-        if "json" in content_type:
+        if "json" in content_type and not truncated:
             handle = session.store.put(resp.json(), source=f"fetch_url({url})", kind="json")
         else:
-            handle = session.store.put(resp.text, source=f"fetch_url({url})", kind="text")
-        return handle.summary()
+            # Truncate (rather than fail) so an over-large page still yields something the
+            # agent can search/inspect. JSON over the cap is stored as text (can't parse a
+            # partial document).
+            text = body[:limit].decode(resp.encoding or "utf-8", errors="replace")
+            handle = session.store.put(text, source=f"fetch_url({url})", kind="text")
+        summary = handle.summary()
+        if truncated:
+            summary["truncated"] = True
+            summary["full_bytes"] = len(body)
+        return summary
     finally:
         if owns_client:
             client.close()

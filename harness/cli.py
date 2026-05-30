@@ -44,9 +44,12 @@ def run_cli(argv: list[str] | None = None, client=None) -> int:
                         root_dir=Path(args.root) if args.root else None)
     on_tool_call = make_verbose_printer() if args.verbose else None
     result = Harness(cfg, client=client).solve(args.problem, on_tool_call=on_tool_call)
-    print(result.final_text)
+    if result.final_text:
+        print(result.final_text)
+    if result.error:
+        print(f"\n[run did not complete: {result.error}]")
     print(f"\n[session: {result.session_dir}]")
-    return 0
+    return 1 if result.error else 0
 
 
 def main() -> None:

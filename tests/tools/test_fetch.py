@@ -41,7 +41,9 @@ def test_fetch_rejects_disallowed_scheme(tmp_path):
         fetch_url(sess, "file:///etc/passwd")
 
 
-def test_fetch_rejects_body_over_max_bytes(tmp_path):
+def test_fetch_truncates_body_over_max_bytes(tmp_path):
+    # An over-large body is truncated (and flagged), not a hard failure -- the agent can
+    # still search/inspect what came back.
     cfg = HarnessConfig(root_dir=tmp_path / "r")
     cfg.fetch.max_bytes = 5
     sess = Session.create(cfg)
@@ -49,8 +51,10 @@ def test_fetch_rejects_body_over_max_bytes(tmp_path):
     def handler(request):
         return httpx.Response(200, text="this is way too long", headers={"content-type": "text/plain"})
 
-    with pytest.raises(ValueError, match="exceeds"):
-        fetch_url(sess, "https://example.com/big", client=_client(handler))
+    out = fetch_url(sess, "https://example.com/big", client=_client(handler))
+    assert out["truncated"] is True
+    assert out["full_bytes"] == len("this is way too long")
+    assert sess.store.get(out["id"]) == "this "  # first 5 bytes
 
 
 def test_fetch_returns_structured_error_on_http_error(tmp_path):

@@ -17,6 +17,7 @@ class Result:
     handles: dict[str, Any]
     files: list[str]
     session_dir: Path
+    error: str | None = None  # set if the agent run failed (e.g. provider/context error)
 
 
 class Harness:
@@ -36,12 +37,19 @@ class Harness:
     def solve(self, problem: str, tools: list | None = None, on_tool_call=None) -> Result:
         agent = build_agent(self.session, self.config, self._make_client(),
                             extra_tools=tools, on_tool_call=on_tool_call)
-        resp = run_agent_sync(agent, problem)
+        # Catch agent/provider failures (e.g. context_length_exceeded) so the caller gets
+        # a clean Result with the work-so-far preserved, not a raw traceback.
+        final_text, error = "", None
+        try:
+            final_text = run_agent_sync(agent, problem).text
+        except Exception as e:  # noqa: BLE001 - top-level entry point; surface, don't crash
+            error = f"{type(e).__name__}: {e}"
         return Result(
-            final_text=resp.text,
+            final_text=final_text,
             handles=self.session.store.manifest(),
             files=self._user_files(),
             session_dir=self.session.root,
+            error=error,
         )
 
     def _user_files(self) -> list[str]:

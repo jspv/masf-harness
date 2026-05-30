@@ -42,6 +42,21 @@ def test_solve_accepts_extra_user_tools(tmp_path):
     assert calls["n"] == 1
 
 
+def test_solve_returns_error_when_agent_raises(tmp_path):
+    from agent_framework import BaseChatClient, FunctionInvocationLayer
+
+    class RaisingClient(FunctionInvocationLayer, BaseChatClient):
+        async def _inner_get_response(self, *, messages, stream, options, **kwargs):
+            raise RuntimeError("context_length_exceeded")
+
+    cfg = HarnessConfig(root_dir=tmp_path / "r")
+    result = Harness(cfg, client=RaisingClient()).solve("do something")
+    assert result.final_text == ""
+    assert result.error is not None
+    assert "context_length_exceeded" in result.error
+    assert result.session_dir.exists()  # session preserved despite the failure
+
+
 def test_solve_reports_tool_calls_via_on_tool_call(tmp_path):
     cfg = HarnessConfig(root_dir=tmp_path / "r")
     client = StubChatClient([tool_call("write_file", {"path": "a.txt", "content": "hi"}),

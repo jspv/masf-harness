@@ -22,6 +22,16 @@ def test_read_is_bounded_by_limit_and_offset(tmp_path):
     assert out == "line10\nline11\nline12\n"
 
 
+def test_read_file_caps_total_characters_on_long_lines(tmp_path):
+    # Minified-HTML style: one enormous line. limit=lines doesn't bound chars, so the
+    # char cap must kick in to protect the context window.
+    sess = _session(tmp_path)
+    write_file(sess, "big.html", "x" * 200_000)  # single 200k-char line
+    out = read_file(sess, "big.html")
+    assert len(out) <= 50_000 + 200  # cap + truncation note
+    assert "truncated" in out.lower()
+
+
 def test_read_past_eof_returns_empty(tmp_path):
     sess = _session(tmp_path)
     write_file(sess, "a.txt", "one\ntwo\n")

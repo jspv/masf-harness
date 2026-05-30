@@ -8,15 +8,27 @@ from ..paths import safe_path
 from ..session import Session
 
 _DEFAULT_LIMIT = 2000
+_MAX_READ_CHARS = 50_000  # hard cap so a single huge line (e.g. minified HTML) can't flood context
 
 
-def read_file(session: Session, path: str, offset: int = 0, limit: int = _DEFAULT_LIMIT) -> str:
-    """Read up to ``limit`` lines starting at line ``offset`` from a file under the root."""
+def read_file(session: Session, path: str, offset: int = 0, limit: int = _DEFAULT_LIMIT,
+              max_chars: int = _MAX_READ_CHARS) -> str:
+    """Read up to ``limit`` lines starting at line ``offset`` from a file under the root.
+
+    The result is also capped at ``max_chars`` characters so that a file with very long
+    lines (minified HTML/JSON, one-line dumps) cannot blow the model's context window.
+    When truncated, a note tells the agent to narrow the read or use ``search``.
+    """
     if offset < 0 or limit < 0:
         raise ValueError("offset and limit must be non-negative")
     target = safe_path(session.root, path)
     lines = target.read_text(encoding="utf-8").splitlines(keepends=True)
-    return "".join(lines[offset:offset + limit])
+    text = "".join(lines[offset:offset + limit])
+    if len(text) > max_chars:
+        text = (text[:max_chars]
+                + f"\n... [truncated at {max_chars} chars; narrow the read with offset/limit "
+                  "or use search to locate what you need]")
+    return text
 
 
 def write_file(session: Session, path: str, content: str) -> str:
