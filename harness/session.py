@@ -69,6 +69,52 @@ class Session:
         """The operating-manual text (core + selected bundles)."""
         return _bundles.instructions_for(bundles)
 
+    async def create_agent(
+        self,
+        client: Any,
+        *,
+        agent_instructions: str | None = None,
+        tools: list | None = None,
+        bundles: tuple[str, ...] = ("code", "files", "web"),
+        name: str = "data-integrator",
+        **maf_kwargs: Any,
+    ):
+        """Build a MAF agent over the selected bundles plus developer tools/MCP.
+
+        Plain callables are spill-wrapped; MCP servers are connected and their tools get
+        the spill parser (Task 5). Operational instructions ride in ``harness_instructions``.
+        """
+        from agent_framework import create_harness_agent
+
+        from .spill import looks_like_mcp, spill_tool
+
+        builtin = self.tools(*bundles)
+        external: list = []
+        for tool in tools or []:
+            if looks_like_mcp(tool):
+                external.extend(await self._attach_mcp(tool))
+            else:
+                external.append(spill_tool(self, tool))
+
+        maf_kwargs.setdefault("max_context_window_tokens", self.config.max_context_window_tokens)
+        maf_kwargs.setdefault("max_output_tokens", self.config.max_output_tokens)
+        return create_harness_agent(
+            client,
+            name=name,
+            harness_instructions=self.harness_instructions(*bundles),
+            agent_instructions=agent_instructions,
+            tools=builtin + external,
+            disable_todo=True,
+            disable_mode=True,
+            disable_memory=True,
+            disable_web_search=True,
+            **maf_kwargs,
+        )
+
+    async def _attach_mcp(self, tool: Any) -> list:
+        """Placeholder until Task 5; plain-tool path does not reach here."""
+        raise NotImplementedError("MCP support lands in Task 5")
+
     async def __aenter__(self) -> "Session":
         return self
 
