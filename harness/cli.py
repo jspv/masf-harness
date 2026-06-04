@@ -42,8 +42,7 @@ def run_cli(argv: list[str] | None = None, client=None) -> int:
     args = build_parser().parse_args(argv)
     cfg = HarnessConfig(model=args.model,
                         root_dir=Path(args.root) if args.root else None)
-    on_tool_call = make_verbose_printer() if args.verbose else None
-    result = Harness(cfg, client=client).solve(args.problem, on_tool_call=on_tool_call)
+    result = Harness(cfg, client=client).solve(args.problem)
     if result.final_text:
         print(result.final_text)
     if result.error:
