@@ -75,32 +75,3 @@ def looks_like_mcp(tool: Any) -> bool:
         and callable(getattr(tool, "close", None))
         and hasattr(tool, "functions")
     )
-
-
-# ---------------------------------------------------------------------------
-# Backward-compatibility shim — agent.py still imports this until Task 4/8.
-# ---------------------------------------------------------------------------
-
-def wrap_external_tools(session: Session, tools: list | None) -> list:
-    """Deprecated shim: wraps plain callables with functools.wraps-based spill.
-
-    Kept so agent.py can import without changes until it is migrated to
-    ``spill_tool`` / ``create_agent`` in later tasks.
-    """
-    import functools
-    import inspect
-
-    def _wrap(fn: Callable) -> Callable:
-        name = getattr(fn, "__name__", "tool")
-        if inspect.iscoroutinefunction(fn):
-            @functools.wraps(fn)
-            async def awrapper(*args: Any, **kwargs: Any) -> Any:  # type: ignore[return]
-                return _maybe_spill(session, name, await fn(*args, **kwargs))
-            return awrapper
-
-        @functools.wraps(fn)
-        def wrapper(*args: Any, **kwargs: Any) -> Any:
-            return _maybe_spill(session, name, fn(*args, **kwargs))
-        return wrapper
-
-    return [_wrap(t) for t in (tools or [])]
