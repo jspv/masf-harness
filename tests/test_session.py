@@ -1,4 +1,4 @@
-from pathlib import Path
+import asyncio
 
 from harness.config import HarnessConfig
 from harness.session import Session
@@ -45,3 +45,46 @@ def test_cleanup_removes_root_when_owned(tmp_path):
     assert sess.root.exists()
     sess.cleanup()
     assert not sess.root.exists()
+
+
+def test_session_handles_and_artifacts(tmp_path):
+    from harness import HarnessConfig, Session
+
+    sess = Session.create(HarnessConfig(root_dir=tmp_path / "r"))
+    (sess.root / "report.txt").write_text("hi")
+    (sess.root / ".scripts").mkdir(exist_ok=True)
+    (sess.root / ".scripts" / "x.py").write_text("# scratch")
+    sess.store.put({"a": 1}, source="t")
+
+    assert "report.txt" in sess.artifacts
+    assert not any(a.startswith(".scripts") for a in sess.artifacts)
+    assert not any(a.startswith("handles") for a in sess.artifacts)
+    assert sess.handles  # the put() handle shows up
+
+
+def test_session_async_context_manager_cleanup(tmp_path):
+    from harness import HarnessConfig, Session
+
+    async def run():
+        cfg = HarnessConfig(root_dir=tmp_path / "r", cleanup=True)
+        async with Session.create(cfg) as sess:
+            root = sess.root
+            assert root.exists()
+        return root
+
+    root = asyncio.run(run())
+    assert not root.exists()  # cleanup=True removed it on exit
+
+
+def test_session_async_context_manager_no_cleanup_by_default(tmp_path):
+    from harness import HarnessConfig, Session
+
+    async def run():
+        cfg = HarnessConfig(root_dir=tmp_path / "r")  # cleanup defaults to False
+        async with Session.create(cfg) as sess:
+            root = sess.root
+            assert root.exists()
+        return root
+
+    root = asyncio.run(run())
+    assert root.exists()  # root survives because cleanup=False
