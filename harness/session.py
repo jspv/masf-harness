@@ -115,7 +115,11 @@ class Session:
         """Connect an MCP server, attach the spill parser to its tools, own its lifecycle."""
         from .spill import make_spill_parser
 
-        await tool.connect()
+        try:
+            await tool.connect()
+        except Exception as e:  # noqa: BLE001 - add context naming the server, then re-raise
+            raise RuntimeError(f"failed to connect MCP server {tool!r}: {e}") from e
+        # Register before the parser loop so aclose() still closes this server if the loop raises.
         self._mcp_connected.append(tool)
         functions = list(tool.functions)
         for ft in functions:

@@ -71,3 +71,18 @@ def test_looks_like_mcp_detection(tmp_path):
 
     assert looks_like_mcp(FakeMCP())
     assert not looks_like_mcp(plain)
+
+
+def test_parser_spills_large_bytes(tmp_path):
+    sess = _session(tmp_path)
+    parse = make_spill_parser(sess, "blob")
+    parse(b"x" * 100)                       # over the 64-byte threshold
+    assert sess.handles
+    assert next(iter(sess.handles.values()))["kind"] == "binary"
+
+
+def test_parser_passes_small_bytes_through(tmp_path):
+    sess = _session(tmp_path)
+    parse = make_spill_parser(sess, "tiny_blob")
+    parse(b"hi")                            # under threshold
+    assert not sess.handles

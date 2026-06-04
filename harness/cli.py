@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 import textwrap
 from pathlib import Path
 from typing import Any
@@ -40,6 +41,9 @@ def make_verbose_printer(write=print):
 
 def run_cli(argv: list[str] | None = None, client=None) -> int:
     args = build_parser().parse_args(argv)
+    if args.verbose:
+        print("[--verbose is temporarily unavailable; it will return in a follow-up]",
+              file=sys.stderr)
     cfg = HarnessConfig(model=args.model,
                         root_dir=Path(args.root) if args.root else None)
     result = Harness(cfg, client=client).solve(args.problem)

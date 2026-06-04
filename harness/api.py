@@ -31,8 +31,9 @@ class Harness:
         self._tools = tools or []
         self._bundles = bundles
         if self.config.search.api_key is None:
-            from dotenv import load_dotenv
             import os
+
+            from dotenv import load_dotenv
             load_dotenv()
             self.config.search.api_key = os.environ.get("TAVILY_API_KEY")
 

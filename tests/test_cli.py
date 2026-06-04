@@ -8,7 +8,7 @@ def test_cli_prints_answer_and_session(tmp_path, capsys):
         text("all done"),
     ])
     code = run_cli(
-        [str("Summarize the workspace."), "--root", str(tmp_path / "r")],
+        ["Summarize the workspace.", "--root", str(tmp_path / "r")],
         client=client,
     )
     out = capsys.readouterr().out

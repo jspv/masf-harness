@@ -31,3 +31,18 @@ def test_asolve_matches_solve(tmp_path):
     result = asyncio.run(h.asolve("go"))
     assert result.final_text == "the answer"
     assert result.handles
+
+
+class _FailingClient(StubChatClient):
+    async def _inner_get_response(self, *, messages, stream, options, **kwargs):
+        raise RuntimeError("model boom")
+
+
+def test_solve_preserves_error_on_agent_failure(tmp_path):
+    cfg = HarnessConfig(root_dir=tmp_path / "err")
+    h = Harness(cfg, client=_FailingClient([text("unused")]), tools=[])
+    result = h.solve("go")
+    assert result.error is not None
+    assert "RuntimeError" in result.error
+    assert result.final_text == ""
+    assert result.session_dir.exists()      # work-so-far / audit trail preserved

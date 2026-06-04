@@ -1,5 +1,6 @@
 import asyncio
 
+import pytest
 from agent_framework import FunctionTool
 from harness import HarnessConfig, Session
 from harness.testing import StubChatClient, text, tool_call
@@ -68,3 +69,37 @@ def test_mcp_closed_even_on_error(tmp_path):
 
     mcp = asyncio.run(run())
     assert mcp.connected and mcp.closed  # __aexit__ closed it despite the error
+
+
+class _BadMCPTool:
+    """An MCP server that fails to connect."""
+    functions: list = []
+
+    def __init__(self):
+        self.closed = False
+
+    async def connect(self):
+        raise ConnectionError("server unreachable")
+
+    async def close(self):
+        self.closed = True
+
+
+def test_mcp_connect_failure_names_server_and_closes_prior(tmp_path):
+    cfg = HarnessConfig(root_dir=tmp_path / "r")
+    good = FakeMCPTool()
+    bad = _BadMCPTool()
+
+    async def run():
+        with pytest.raises(RuntimeError, match="failed to connect MCP server"):
+            async with Session.create(cfg) as sess:
+                # good connects first (registered), then bad fails -> error propagates
+                await sess.create_agent(
+                    StubChatClient([text("x")]),
+                    agent_instructions="x", tools=[good, bad], bundles=("code",),
+                )
+        return good, bad
+
+    good, bad = asyncio.run(run())
+    assert good.connected and good.closed   # prior server torn down on context exit
+    assert not bad.closed                   # bad never connected, so never closed
