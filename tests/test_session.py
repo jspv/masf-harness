@@ -1,5 +1,4 @@
 import asyncio
-from pathlib import Path
 
 from harness.config import HarnessConfig
 from harness.session import Session
@@ -75,3 +74,17 @@ def test_session_async_context_manager_cleanup(tmp_path):
 
     root = asyncio.run(run())
     assert not root.exists()  # cleanup=True removed it on exit
+
+
+def test_session_async_context_manager_no_cleanup_by_default(tmp_path):
+    from harness import HarnessConfig, Session
+
+    async def run():
+        cfg = HarnessConfig(root_dir=tmp_path / "r")  # cleanup defaults to False
+        async with Session.create(cfg) as sess:
+            root = sess.root
+            assert root.exists()
+        return root
+
+    root = asyncio.run(run())
+    assert root.exists()  # root survives because cleanup=False

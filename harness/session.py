@@ -18,7 +18,7 @@ class Session:
     store: HandleStore
     sandbox: LocalSubprocessSandbox
     config: HarnessConfig
-    _mcp_connected: list = field(default_factory=list, init=False, repr=False)
+    _mcp_connected: list[Any] = field(default_factory=list, init=False, repr=False)
 
     @classmethod
     def create(cls, config: HarnessConfig) -> "Session":
