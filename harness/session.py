@@ -84,9 +84,9 @@ class Session:
         Plain callables are spill-wrapped; MCP servers are connected and their tools get
         the spill parser (Task 5). Operational instructions ride in ``harness_instructions``.
         """
-        from agent_framework import create_harness_agent
+        from agent_framework import create_harness_agent  # local: heavy dep, imported at call time
 
-        from .spill import looks_like_mcp, spill_tool
+        from .spill import looks_like_mcp, spill_tool  # local: spill imports Session -> circular at module level
 
         builtin = self.tools(*bundles)
         external: list = []
@@ -112,8 +112,15 @@ class Session:
         )
 
     async def _attach_mcp(self, tool: Any) -> list:
-        """Placeholder until Task 5; plain-tool path does not reach here."""
-        raise NotImplementedError("MCP support lands in Task 5")
+        """Connect an MCP server, attach the spill parser to its tools, own its lifecycle."""
+        from .spill import make_spill_parser
+
+        await tool.connect()
+        self._mcp_connected.append(tool)
+        functions = list(tool.functions)
+        for ft in functions:
+            ft.result_parser = make_spill_parser(self, ft.name)
+        return functions
 
     async def __aenter__(self) -> "Session":
         return self
