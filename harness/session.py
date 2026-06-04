@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from . import bundles as _bundles
 from .config import HarnessConfig
 from .handles import HandleStore
 from .sandbox import LocalSubprocessSandbox
@@ -57,6 +58,16 @@ class Session:
         self._mcp_connected.clear()
         if self.config.cleanup and self.root.exists():
             shutil.rmtree(self.root)
+
+    def tools(self, *bundles: str) -> list:
+        """The built-in tool callables for the selected bundles (default: all)."""
+        from .tools.registry import build_tools  # local import avoids circular dependency
+        wanted = _bundles.tool_names_for(bundles)
+        return [t for t in build_tools(self) if t.__name__ in wanted]
+
+    def harness_instructions(self, *bundles: str) -> str:
+        """The operating-manual text (core + selected bundles)."""
+        return _bundles.instructions_for(bundles)
 
     async def __aenter__(self) -> "Session":
         return self
