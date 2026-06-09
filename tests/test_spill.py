@@ -1,7 +1,15 @@
+import json
+
 import pandas as pd
+from agent_framework._types import Content
 
 from harness import HarnessConfig, Session
-from harness.spill import looks_like_mcp, make_spill_parser, spill_tool
+from harness.spill import (
+    looks_like_mcp,
+    make_spill_parser,
+    normalize_mcp_result,
+    spill_tool,
+)
 
 
 def _session(tmp_path):
@@ -86,3 +94,43 @@ def test_parser_passes_small_bytes_through(tmp_path):
     parse = make_spill_parser(sess, "tiny_blob")
     parse(b"hi")                            # under threshold
     assert not sess.handles
+
+
+# --- MCP returns: tools hand the parser a list[Content], not a str/dict -------
+
+def test_parser_unwraps_mcp_content_list_to_clean_json(tmp_path):
+    # A real MCP tool returns its JSON payload wrapped as [Content(text=...)].
+    # Spilling that must store the underlying structure, not a list-wrapping-a-string.
+    sess = _session(tmp_path)
+    parse = make_spill_parser(sess, "mcp_tool")
+    payload = [{"id": i, "subject": "x" * 20} for i in range(50)]   # well over threshold
+    result = [Content.from_text(json.dumps(payload))]
+    parse(result)
+    hid = next(iter(sess.handles))
+    assert sess.handles[hid]["kind"] == "json"
+    assert sess.store.get(hid) == payload   # round-trips to the original, not ["[{...}]"]
+
+
+def test_normalize_unwraps_json_text_content():
+    payload = [{"id": 1}, {"id": 2}]
+    assert normalize_mcp_result([Content.from_text(json.dumps(payload))]) == payload
+
+
+def test_normalize_unwraps_non_json_text_content_to_string():
+    assert normalize_mcp_result([Content.from_text("plain log line")]) == "plain log line"
+
+
+def test_normalize_joins_multiple_text_contents():
+    chunks = [Content.from_text("foo"), Content.from_text("bar")]
+    assert normalize_mcp_result(chunks) == "foobar"
+
+
+def test_normalize_preserves_non_text_content_unchanged():
+    # An image/data Content has no text -- collapsing would silently drop it.
+    blob = [Content.from_data(data=b"\x89PNG", media_type="image/png")]
+    assert normalize_mcp_result(blob) is blob
+
+
+def test_normalize_leaves_non_content_values_unchanged():
+    assert normalize_mcp_result({"a": 1}) == {"a": 1}
+    assert normalize_mcp_result([1, 2, 3]) == [1, 2, 3]
