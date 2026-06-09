@@ -82,6 +82,39 @@ result.error        # None, or a string if the run failed (e.g. context overflow
 
 Your tools are wrapped as MAF agent tools automatically, and their returns pass through the same spill middleware — so tool-produced and code-produced data are identical kinds of handle.
 
+### MCP servers
+
+Pass a MAF `MCPTool` — stdio, Streamable-HTTP, or WebSocket — in the same `tools=[…]` list. The harness connects each server, **owns its lifecycle** (closing it when the run ends, even on error), and attaches the same spill handling to every tool the server exposes — so a large MCP return (a long message list, a big query result) lands as a clean typed handle instead of flooding context.
+
+```python
+from agent_framework import MCPStdioTool
+from harness import Harness, HarnessConfig
+
+# A stdio MCP server, launched however your other MCP clients launch it.
+# (If the server resolves its config/credentials relative to a directory, launch it
+#  from there, e.g. command="sh", args=["-c", "cd /path/to/server && exec uv run its-cmd"].)
+mcp = MCPStdioTool(name="msgraph", command="uv", args=["run", "msgraph-mcp"])
+
+h = Harness(HarnessConfig(model="gpt-5-mini"))
+result = h.solve("List the subjects of my 5 most recent emails.", tools=[mcp])
+print(result.final_text)
+```
+
+A remote server works the same way:
+
+```python
+from agent_framework import MCPStreamableHTTPTool
+
+mcp = MCPStreamableHTTPTool(
+    name="my-service",
+    url="https://example.com/mcp",
+    header_provider=lambda _: {"Authorization": f"Bearer {token}"},  # if it needs auth
+)
+result = h.solve("…", tools=[mcp])
+```
+
+MCP support needs the `mcp` SDK, which is a declared dependency, so `uv sync` already installs it.
+
 ## Tool surface
 
 The agent gets nine root-confined tools. Domain data sources are *your* tools/MCP servers, auto-handled by spill.
@@ -142,10 +175,10 @@ harness/
   handles.py     Handle + HandleStore (json / text / dataframe persistence)
   sandbox.py     SandboxExecutor protocol + LocalSubprocessSandbox
   session.py     Session — root dir + store + sandbox for one run
-  spill.py       middleware: large/structured tool returns → handles
+  spill.py       large/structured tool & MCP returns → handles (MAF result_parser)
+  bundles.py     capability bundles (code / files / web) + their instructions
   tools/         the agent's tools (files, search, fetch, code, inspect, web)
   runtime/       in-sandbox helpers (load/save/emit)
-  agent.py       build_agent() over MAF create_harness_agent
   api.py         Harness / solve() / Result
   cli.py         thin streaming CLI
 docs/superpowers/  design specs + phased implementation plans
