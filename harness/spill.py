@@ -22,6 +22,30 @@ def _is_handle_summary(obj: Any) -> bool:
     return isinstance(obj, dict) and {"id", "kind", "path"} <= obj.keys()
 
 
+def normalize_mcp_result(result: Any) -> Any:
+    """Collapse an MCP ``list[Content]`` return into its underlying payload.
+
+    MAF hands our parser the raw return value, and MCP tools return their result as a
+    ``list[Content]`` -- almost always a single text item carrying JSON. Left as-is, a
+    spill would store the Content objects (double-encoded as ``["[{...}]"]``) instead of
+    the data. We join the text, parse it as JSON when possible (so it stores as a clean
+    ``json`` handle), and otherwise return the raw string.
+
+    Any non-text Content (image/data/resource has ``text is None``) means a plain join
+    would silently drop bytes, so such a result is returned unchanged for passthrough.
+    """
+    if not (isinstance(result, list) and result):
+        return result
+    if not all(isinstance(c, Content) and getattr(c, "text", None) for c in result):
+        return result
+    text = "".join(c.text for c in result)
+    try:
+        parsed = json.loads(text)
+    except (ValueError, TypeError):
+        return text
+    return parsed if isinstance(parsed, (dict, list)) else text
+
+
 def _should_spill(result: Any, threshold_bytes: int) -> bool:
     try:
         import pandas as pd
@@ -41,6 +65,7 @@ def _should_spill(result: Any, threshold_bytes: int) -> bool:
 
 
 def _maybe_spill(session: Session, tool_name: str, result: Any) -> Any:
+    result = normalize_mcp_result(result)
     if _should_spill(result, session.config.spill_threshold_bytes):
         return session.store.put(result, source=f"tool:{tool_name}").summary()
     return result
