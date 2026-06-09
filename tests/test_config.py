@@ -5,6 +5,8 @@ def test_defaults_are_sensible():
     cfg = HarnessConfig()
     assert cfg.model == "gpt-5-mini"
     assert cfg.spill_threshold_bytes == 8192
+    assert cfg.max_spill_bytes == 100 * 1024 * 1024
+    assert cfg.max_spill_bytes > cfg.spill_threshold_bytes  # a real spill-over zone
     assert isinstance(cfg.sandbox, SandboxConfig)
     assert isinstance(cfg.fetch, FetchConfig)
     assert cfg.sandbox.timeout_s == 30.0

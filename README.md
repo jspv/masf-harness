@@ -115,6 +115,8 @@ result = h.solve("…", tools=[mcp])
 
 MCP support needs the `mcp` SDK, which is a declared dependency, so `uv sync` already installs it.
 
+**On result size.** Spilling is lossless — a large page is preserved whole as a handle, so an MCP server's pagination cursor survives and the agent can fetch the next page. The two ends of the spill-over zone are configurable (`spill_threshold_bytes` … `max_spill_bytes`): a well-behaved server that paginates returns bounded pages that flow through cleanly, while an unbounded dump past `max_spill_bytes` raises `SpillLimitExceeded` rather than silently filling disk — nudging the source toward server-side pagination/filtering.
+
 ## Tool surface
 
 The agent gets nine root-confined tools. Domain data sources are *your* tools/MCP servers, auto-handled by spill.
@@ -149,7 +151,8 @@ Every session has one **root directory**; everything — handles, agent-written 
 | Field | Default | Notes |
 |---|---|---|
 | `model` | `"gpt-5-mini"` | |
-| `spill_threshold_bytes` | `8192` | When a tool return becomes a handle |
+| `spill_threshold_bytes` | `8192` | Lower edge of the spill-over zone: a tool return over this becomes a handle |
+| `max_spill_bytes` | `100 MiB` | Upper edge: a return larger than this is **rejected loudly** (`SpillLimitExceeded`), never silently stored |
 | `max_context_window_tokens` | `128_000` | Fed to MAF compaction |
 | `max_output_tokens` | `4096` | |
 | `root_dir` | `None` | `None` → a session dir under `./.harness/sessions/` |

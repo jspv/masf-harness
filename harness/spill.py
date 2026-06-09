@@ -46,29 +46,70 @@ def normalize_mcp_result(result: Any) -> Any:
     return parsed if isinstance(parsed, (dict, list)) else text
 
 
-def _should_spill(result: Any, threshold_bytes: int) -> bool:
+class SpillLimitExceeded(RuntimeError):
+    """A tool returned more than ``config.max_spill_bytes`` -- rejected, not stored.
+
+    The upper edge of the spill-over zone: spilling is lossless, so we never truncate,
+    but we also won't silently absorb an unbounded dump from a possibly-untrusted tool
+    or MCP server. Failing loudly keeps the disk/cost surface bounded and points the
+    developer at the fix (paginate/filter, or raise the cap).
+    """
+
+    def __init__(self, tool_name: str, size: int, limit: int) -> None:
+        self.tool_name = tool_name
+        self.size = size
+        self.limit = limit
+        super().__init__(
+            f"tool {tool_name!r} returned {size} bytes, over the {limit}-byte spill cap "
+            f"(config.max_spill_bytes). Have the source paginate or filter its results, "
+            f"or raise max_spill_bytes if this volume is expected."
+        )
+
+
+def _is_dataframe(result: Any) -> bool:
     try:
         import pandas as pd
-        if isinstance(result, pd.DataFrame):
-            return True
+        return isinstance(result, pd.DataFrame)
     except ImportError:
-        pass
+        return False
+
+
+def _spill_size_bytes(result: Any) -> int | None:
+    """Bytes a result would occupy as a handle, or ``None`` if it isn't a spillable kind.
+
+    A handle summary returns ``None`` so it never re-spills. The same measurement drives
+    both edges of the zone (threshold and cap), so the two decisions can't drift apart.
+    """
+    if _is_dataframe(result):
+        return int(result.memory_usage(deep=True).sum())
     if isinstance(result, (bytes, bytearray)):
-        return len(result) > threshold_bytes
+        return len(result)
     if isinstance(result, str):
-        return len(result.encode()) > threshold_bytes
+        return len(result.encode())
     if isinstance(result, (dict, list)):
         if _is_handle_summary(result):
-            return False
-        return len(json.dumps(result, default=str).encode()) > threshold_bytes
-    return False
+            return None
+        return len(json.dumps(result, default=str).encode())
+    return None
+
+
+def _should_spill(result: Any, threshold_bytes: int) -> bool:
+    # DataFrames always become handles (they exist to be analyzed in the sandbox);
+    # other kinds spill only once they cross the lower threshold.
+    if _is_dataframe(result):
+        return True
+    size = _spill_size_bytes(result)
+    return size is not None and size > threshold_bytes
 
 
 def _maybe_spill(session: Session, tool_name: str, result: Any) -> Any:
     result = normalize_mcp_result(result)
-    if _should_spill(result, session.config.spill_threshold_bytes):
-        return session.store.put(result, source=f"tool:{tool_name}").summary()
-    return result
+    if not _should_spill(result, session.config.spill_threshold_bytes):
+        return result
+    size = _spill_size_bytes(result) or 0
+    if size > session.config.max_spill_bytes:
+        raise SpillLimitExceeded(tool_name, size, session.config.max_spill_bytes)
+    return session.store.put(result, source=f"tool:{tool_name}").summary()
 
 
 def make_spill_parser(session: Session, tool_name: str) -> Callable[[Any], list[Content]]:

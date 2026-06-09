@@ -33,7 +33,8 @@ class SearchConfig:
 @dataclass
 class HarnessConfig:
     model: str = "gpt-5-mini"
-    spill_threshold_bytes: int = 8192
+    spill_threshold_bytes: int = 8192          # lower edge: tool returns over this become handles
+    max_spill_bytes: int = 100 * 1024 * 1024   # upper edge: a return over this is rejected, not stored
     max_context_window_tokens: int = 128_000
     max_output_tokens: int = 4096
     root_dir: Path | None = None  # None -> a session dir is created under ./.harness/sessions/
