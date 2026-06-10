@@ -47,7 +47,7 @@ server's logging and progress notifications into the **same `StatusBus` the Sess
 
 | Unit | Responsibility | Depends on |
 |---|---|---|
-| `harness/mcp_status.py` (new) | Pure translation + wiring helpers: build the chaining `logging_callback`/`message_handler` wrappers that emit `StatusEvent`s to a bus; inject the progress token; feature-detect the MAF seams | `status`, stdlib, mcp types |
+| `harness/mcp_status.py` (new) | Pure translation + wiring helpers: build the chaining `logging_callback`/`message_handler` wrappers that emit `StatusEvent`s to a bus; inject the progress token; feature-detect the MAF seams | `status`, stdlib (mcp notifications are duck-typed, not imported) |
 | `harness/session.py` (modify) | In `_attach_mcp`: install the wrappers before `connect()`, inject the token after, keep the token→tool map | `mcp_status` |
 
 `mcp_status.py` is kept separate from `session.py` so the (MAF-internal-coupled, therefore
