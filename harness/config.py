@@ -31,6 +31,14 @@ class SearchConfig:
 
 
 @dataclass
+class DocumentConfig:
+    # OCR is off by default: born-digital PDFs/Office files get tables and structure from
+    # the layout/TableFormer models, so OCR only adds latency + model downloads. Turn it on
+    # for scanned/image documents.
+    ocr: bool = False
+
+
+@dataclass
 class HarnessConfig:
     model: str = "gpt-5-mini"
     spill_threshold_bytes: int = 8192          # lower edge: tool returns over this become handles
@@ -42,3 +50,4 @@ class HarnessConfig:
     sandbox: SandboxConfig = field(default_factory=SandboxConfig)
     fetch: FetchConfig = field(default_factory=FetchConfig)
     search: SearchConfig = field(default_factory=SearchConfig)
+    documents: DocumentConfig = field(default_factory=DocumentConfig)

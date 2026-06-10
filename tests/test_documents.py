@@ -1,5 +1,7 @@
+import harness.tools.documents as docmod
 from harness import HarnessConfig, Session
-from harness.tools.documents import read_document
+from harness.config import DocumentConfig
+from harness.tools.documents import prefetch_models, read_document
 
 
 def _session(tmp_path):
@@ -81,5 +83,40 @@ def test_missing_docling_returns_actionable_error(tmp_path):
         raise ModuleNotFoundError("No module named 'docling'")
 
     out = read_document(sess, "x.pdf", convert=not_installed)
-    assert "error" in out and "docs" in out["error"].lower()
+    assert "error" in out and "docling" in out["error"].lower()
+    assert "--extra docling" in out["error"]
     assert not sess.handles
+
+
+def test_default_converter_uses_config_ocr_off_by_default(tmp_path, monkeypatch):
+    sess = _session(tmp_path)                                   # default DocumentConfig: ocr=False
+    (sess.root / "f.pdf").write_bytes(b"x")
+    captured = {}
+    monkeypatch.setattr(docmod, "_docling_convert",
+                        lambda src, ocr: captured.update(src=src, ocr=ocr) or "# md")
+    out = read_document(sess, "f.pdf")                          # no injected converter -> default path
+    assert out["kind"] == "text"
+    assert captured["ocr"] is False
+    assert captured["src"] == str(sess.root / "f.pdf")
+
+
+def test_default_converter_enables_ocr_when_configured(tmp_path, monkeypatch):
+    sess = Session.create(HarnessConfig(root_dir=tmp_path / "r", documents=DocumentConfig(ocr=True)))
+    (sess.root / "f.pdf").write_bytes(b"x")
+    captured = {}
+    monkeypatch.setattr(docmod, "_docling_convert",
+                        lambda src, ocr: captured.update(ocr=ocr) or "# md")
+    read_document(sess, "f.pdf")
+    assert captured["ocr"] is True
+
+
+def test_prefetch_models_skips_ocr_models_by_default():
+    calls = {}
+    prefetch_models(downloader=lambda **kw: calls.update(kw))
+    assert calls["with_rapidocr"] is False                      # matches the OCR-off default
+
+
+def test_prefetch_models_includes_ocr_models_when_requested():
+    calls = {}
+    prefetch_models(downloader=lambda **kw: calls.update(kw), ocr=True)
+    assert calls["with_rapidocr"] is True

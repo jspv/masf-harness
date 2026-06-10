@@ -15,10 +15,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-docs = ["docling>=2.0"]            # heavy + downloads models; opt-in. Enables read_document.
+docling = ["docling>=2.0"]         # heavy + downloads models; opt-in. Enables read_document.
 
 [project.scripts]
 harness = "harness.cli:main"
+harness-prefetch-docling = "harness.tools.documents:_prefetch_main"
 
 [dependency-groups]
 dev = [

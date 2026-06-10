@@ -28,11 +28,19 @@ Requires **Python 3.12** and [`uv`](https://docs.astral.sh/uv/). `agent-framewor
 uv sync --prerelease=allow
 ```
 
-Document ingestion (`read_document`) uses [Docling](https://github.com/DS4SD/docling), an optional heavy dependency that downloads models on first use. Enable it with:
+Document ingestion (`read_document`) uses [Docling](https://github.com/DS4SD/docling), an optional heavy dependency. Enable it with:
 
 ```bash
-uv sync --prerelease=allow --extra docs
+uv sync --prerelease=allow --extra docling
 ```
+
+Docling downloads its models on first use. To pay that cost up front (e.g. at deploy time) instead of on the first `read_document` call, prefetch them:
+
+```bash
+harness-prefetch-docling          # add --ocr to also fetch OCR models (scanned documents)
+```
+
+OCR is **off by default** — born-digital PDFs/Office files get their tables and structure without it. Set `HarnessConfig.documents.ocr = True` for scanned/image documents.
 
 Create a `.env` in the project root:
 
@@ -138,7 +146,7 @@ The agent gets nine root-confined tools. Domain data sources are *your* tools/MC
 | `inspect_handle(id, …)` | Deeper on-demand look at a handle (fuller schema, more preview, optional stats) |
 | `web_search(query, max_results=5)` | Tavily web search (needs `TAVILY_API_KEY`) |
 | `web_extract(url)` | Tavily clean-content extraction |
-| `read_document(source)` | A workspace path or URL → clean markdown handle (tables preserved) via Docling; needs the `docs` extra |
+| `read_document(source)` | A workspace path or URL → clean markdown handle (tables preserved) via Docling; needs the `docling` extra |
 
 The loop follows the **search → read → analyze** triad: `search` to locate, `read_file` to load the right slice, `run_python` to analyze.
 
@@ -166,6 +174,7 @@ Every session has one **root directory**; everything — handles, agent-written 
 | `sandbox` | `SandboxConfig()` | timeout, rlimits, `confine_os`, preinstalled libs |
 | `fetch` | `FetchConfig()` | `max_bytes`, timeout, allowed URL schemes |
 | `search` | `SearchConfig()` | Tavily provider, key, `max_results` |
+| `documents` | `DocumentConfig()` | Docling ingestion: `ocr` (off by default) |
 
 ## Development
 

@@ -6,12 +6,12 @@ import pytest
 from harness import HarnessConfig, Session
 from harness.tools.documents import read_document
 
-_RUN = os.environ.get("HARNESS_LIVE_DOCS") == "1"
+_RUN = os.environ.get("HARNESS_LIVE_DOCLING") == "1"
 _HAS_DOCLING = importlib.util.find_spec("docling") is not None
 
 pytestmark = pytest.mark.skipif(
     not (_RUN and _HAS_DOCLING),
-    reason="set HARNESS_LIVE_DOCS=1 and install the 'docs' extra to run real Docling",
+    reason="set HARNESS_LIVE_DOCLING=1 and install the 'docling' extra to run real Docling",
 )
 
 
