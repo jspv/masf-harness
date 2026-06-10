@@ -137,3 +137,26 @@ def test_graceful_degradation_when_seams_absent():
     assert token_map == {}
     assert not hasattr(tool, "_tool_call_meta_by_name")
     assert not events
+
+
+def test_message_handler_passes_through_an_exception():
+    # The real mcp message_handler also receives bare Exceptions, not just notifications.
+    bus, events = _bus()
+    tool = _FakeTool()
+    install_status_wrappers(bus, tool, "srv")
+    asyncio.run(tool.message_handler(RuntimeError("transport boom")))
+    assert events == []
+    assert len(tool.msg_seen) == 1                            # original still called
+
+
+def test_emit_error_does_not_break_the_wrapped_handler():
+    bus, _ = _bus()
+
+    def boom(_event):
+        raise RuntimeError("emit boom")
+
+    bus.emit = boom                                          # emit itself raises
+    tool = _FakeTool()
+    install_status_wrappers(bus, tool, "srv")
+    asyncio.run(tool.logging_callback(_LogParams("hello")))  # must not raise
+    assert len(tool.log_seen) == 1                            # original still called
