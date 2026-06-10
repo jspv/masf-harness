@@ -5,10 +5,13 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from .config import HarnessConfig
 from .session import Session
+from .status import StatusEvent
+
+_StatusSink = Callable[[StatusEvent], None]
 
 
 @dataclass
@@ -25,11 +28,13 @@ class Harness:
 
     def __init__(self, config: HarnessConfig | None = None, client: Any | None = None,
                  *, tools: list | None = None,
-                 bundles: tuple[str, ...] = ("code", "files", "web")) -> None:
+                 bundles: tuple[str, ...] = ("code", "files", "web"),
+                 on_status: _StatusSink | None = None) -> None:
         self.config = config or HarnessConfig()
         self._client = client
         self._tools = tools or []
         self._bundles = bundles
+        self._on_status = on_status
         if self.config.search.api_key is None:
             import os
 
@@ -43,9 +48,13 @@ class Harness:
         from agent_framework.openai import OpenAIChatClient
         return OpenAIChatClient(model=self.config.model, env_file_path=".env")
 
-    async def asolve(self, problem: str, tools: list | None = None) -> Result:
+    async def asolve(self, problem: str, tools: list | None = None, *,
+                     on_status: _StatusSink | None = None) -> Result:
         final_text, error = "", None
+        sink = on_status if on_status is not None else self._on_status
         async with Session.create(self.config) as session:
+            if sink is not None:
+                session.subscribe(sink)   # unsubscribe handle unneeded: the bus dies with the Session
             agent = await session.create_agent(
                 self._make_client(),
                 agent_instructions=None,
@@ -65,11 +74,13 @@ class Harness:
                 error=error,
             )
 
-    def solve(self, problem: str, tools: list | None = None) -> Result:
-        return asyncio.run(self.asolve(problem, tools=tools))
+    def solve(self, problem: str, tools: list | None = None, *,
+              on_status: _StatusSink | None = None) -> Result:
+        return asyncio.run(self.asolve(problem, tools=tools, on_status=on_status))
 
 
 def solve(problem: str, *, tools: list | None = None,
-          config: HarnessConfig | None = None, client: Any | None = None) -> Result:
+          config: HarnessConfig | None = None, client: Any | None = None,
+          on_status: _StatusSink | None = None) -> Result:
     """One-shot convenience: build a Harness and solve a single problem."""
-    return Harness(config, client=client, tools=tools).solve(problem)
+    return Harness(config, client=client, tools=tools, on_status=on_status).solve(problem)

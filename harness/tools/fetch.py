@@ -16,6 +16,7 @@ import httpx
 
 from ..config import FetchConfig
 from ..session import Session
+from ..status import report_progress
 
 _USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
@@ -73,6 +74,8 @@ def fetch_url(session: Session, url: str, max_bytes: int | None = None,
     scheme = urlparse(url).scheme
     if scheme not in cfg.allowed_schemes:
         raise ValueError(f"scheme {scheme!r} not allowed (allowed: {cfg.allowed_schemes})")
+
+    report_progress(f"fetching {url}", tool="fetch_url")
 
     owns_client = client is None
     client = client or _default_client(cfg)

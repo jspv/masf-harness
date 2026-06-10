@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 
 from ..paths import PathEscapesRootError, safe_path
 from ..session import Session
+from ..status import report_progress
 
 
 def _docling_convert(source: str, ocr: bool = False) -> str:
@@ -63,6 +64,7 @@ def read_document(session: Session, source: str,
         def convert(src: str) -> str:  # default converter honors the session's OCR setting
             return _docling_convert(src, ocr=ocr)
 
+    report_progress(f"converting {source} via Docling", tool="read_document")
     try:
         markdown = convert(target)
     except ImportError:

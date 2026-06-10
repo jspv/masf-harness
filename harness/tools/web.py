@@ -9,6 +9,7 @@ from __future__ import annotations
 import httpx
 
 from ..session import Session
+from ..status import report_progress
 
 _SEARCH_URL = "https://api.tavily.com/search"
 _EXTRACT_URL = "https://api.tavily.com/extract"
@@ -29,6 +30,7 @@ def web_search(session: Session, query: str, max_results: int = 5,
     cfg = session.config.search
     if not cfg.api_key:
         return {"error": "web search unavailable: set TAVILY_API_KEY in .env"}
+    report_progress(f"searching: {query}", tool="web_search")
     owns = client is None
     client = client or httpx.Client(timeout=cfg.timeout_s)
     try:
@@ -61,6 +63,7 @@ def web_extract(session: Session, url: str, client: httpx.Client | None = None) 
     cfg = session.config.search
     if not cfg.api_key:
         return {"error": "web extract unavailable: set TAVILY_API_KEY in .env"}
+    report_progress(f"extracting {url}", tool="web_extract")
     owns = client is None
     client = client or httpx.Client(timeout=cfg.timeout_s)
     try:

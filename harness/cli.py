@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import argparse
 import sys
-import textwrap
 from pathlib import Path
-from typing import Any
+from typing import Callable
 
 from .api import Harness
 from .config import HarnessConfig
+from .status import StatusEvent
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -18,35 +18,31 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--model", default="gpt-5-mini", help="Model name.")
     p.add_argument("--root", default=None, help="Workspace root dir (default: a fresh session dir).")
     p.add_argument("-v", "--verbose", action="store_true",
-                   help="Print each tool call (and run_python code) as it happens.")
+                   help="Print live tool status to stderr as the task runs.")
     return p
 
 
-def _short(value: Any, limit: int = 300) -> str:
-    text = repr(value)
-    return text if len(text) <= limit else text[:limit] + f"… ({len(text)} chars)"
+def make_status_printer(write: Callable[[str], None] | None = None):
+    """A status sink for --verbose: formats each StatusEvent to a line."""
+    if write is None:
+        def write(line: str) -> None:
+            print(line, file=sys.stderr)
 
+    def on_status(event: StatusEvent) -> None:
+        progress = ""
+        if event.current is not None and event.total is not None:
+            progress = f" [{event.current:g}/{event.total:g}]"
+        write(f"→ {event.tool}: {event.message}{progress}")
 
-def make_verbose_printer(write=print):
-    """A tool-call reporter for --verbose: shows each call, the run_python code, and the result."""
-    def on_tool_call(name: str, kwargs: dict, result: Any) -> None:
-        arg_str = ", ".join(f"{k}={_short(v, 80)}" for k, v in kwargs.items() if k != "code")
-        write(f"\n→ {name}({arg_str})")
-        code = kwargs.get("code")
-        if code:
-            write(textwrap.indent(code.rstrip(), "    "))
-        write(f"← {_short(result)}")
-    return on_tool_call
+    return on_status
 
 
 def run_cli(argv: list[str] | None = None, client=None) -> int:
     args = build_parser().parse_args(argv)
-    if args.verbose:
-        print("[--verbose is temporarily unavailable; it will return in a follow-up]",
-              file=sys.stderr)
+    on_status = make_status_printer() if args.verbose else None
     cfg = HarnessConfig(model=args.model,
                         root_dir=Path(args.root) if args.root else None)
-    result = Harness(cfg, client=client).solve(args.problem)
+    result = Harness(cfg, client=client).solve(args.problem, on_status=on_status)
     if result.final_text:
         print(result.final_text)
     if result.error:
