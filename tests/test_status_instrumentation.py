@@ -1,8 +1,12 @@
+import httpx
+
 from harness import HarnessConfig, Session
 from harness.spill import make_spill_parser
 from harness.status import StatusBus, bind_bus
 from harness.tools.code import run_python
 from harness.tools.documents import read_document
+from harness.tools.fetch import fetch_url
+from harness.tools.web import web_extract, web_search
 
 
 def _session(tmp_path):
@@ -41,3 +45,45 @@ def test_spill_emits_stored_status(tmp_path):
         parse({"rows": list(range(500))})              # over the 64-byte threshold -> spills
     stored = [e for e in events if e.tool == "big_tool" and "stored" in e.message.lower()]
     assert stored and "h1" in stored[0].message
+
+
+def _mock_client(handler):
+    return httpx.Client(transport=httpx.MockTransport(handler))
+
+
+def test_fetch_url_emits_fetching_status(tmp_path):
+    sess = _session(tmp_path)
+    bus, events = _collect()
+
+    def handler(request):
+        return httpx.Response(200, text="hello", headers={"content-type": "text/plain"})
+
+    with bind_bus(bus):
+        fetch_url(sess, "https://example.com/x", client=_mock_client(handler))
+    assert any(e.tool == "fetch_url" and "example.com" in e.message for e in events)
+
+
+def test_web_search_emits_searching_status(tmp_path):
+    sess = _session(tmp_path)
+    sess.config.search.api_key = "test-key"
+    bus, events = _collect()
+
+    def handler(request):
+        return httpx.Response(200, json={"answer": None, "results": []})
+
+    with bind_bus(bus):
+        web_search(sess, "model pricing", client=_mock_client(handler))
+    assert any(e.tool == "web_search" and "pricing" in e.message for e in events)
+
+
+def test_web_extract_emits_extracting_status(tmp_path):
+    sess = _session(tmp_path)
+    sess.config.search.api_key = "test-key"
+    bus, events = _collect()
+
+    def handler(request):
+        return httpx.Response(200, json={"results": [{"raw_content": "body", "url": "https://e/x"}]})
+
+    with bind_bus(bus):
+        web_extract(sess, "https://e/x", client=_mock_client(handler))
+    assert any(e.tool == "web_extract" for e in events)
