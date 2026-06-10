@@ -54,7 +54,7 @@ class Harness:
         sink = on_status if on_status is not None else self._on_status
         async with Session.create(self.config) as session:
             if sink is not None:
-                session.subscribe(sink)
+                session.subscribe(sink)   # unsubscribe handle unneeded: the bus dies with the Session
             agent = await session.create_agent(
                 self._make_client(),
                 agent_instructions=None,

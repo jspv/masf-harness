@@ -32,6 +32,18 @@ def test_on_status_can_be_passed_per_call(tmp_path):
     assert any(e.message == "step A" for e in events)
 
 
+def test_raising_on_status_does_not_break_the_run(tmp_path):
+    def boom(event):
+        raise RuntimeError("subscriber boom")
+
+    client = StubChatClient([tool_call("noisy", {"n": 1}), text("done")])
+    h = Harness(HarnessConfig(root_dir=tmp_path / "s3"), client=client,
+                tools=[noisy], on_status=boom)
+    result = h.solve("go")
+    assert result.final_text == "done"                    # status is best-effort; run completes
+    assert result.error is None
+
+
 def _client():
     return StubChatClient([
         tool_call("fetch_big", {"n": 500}),
