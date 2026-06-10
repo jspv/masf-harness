@@ -2,6 +2,7 @@ import asyncio
 
 from harness.config import HarnessConfig
 from harness.session import Session
+from harness.status import report_progress
 
 
 def test_session_creates_root_under_default_location(tmp_path, monkeypatch):
@@ -88,3 +89,36 @@ def test_session_async_context_manager_no_cleanup_by_default(tmp_path):
 
     root = asyncio.run(run())
     assert root.exists()  # root survives because cleanup=False
+
+
+def test_session_subscribe_receives_events_within_async_context(tmp_path):
+    async def run():
+        got = []
+        async with Session.create(HarnessConfig(root_dir=tmp_path / "r")) as session:
+            session.subscribe(got.append)
+            report_progress("inside the run", tool="x")   # bus is bound by __aenter__
+        return got
+
+    got = asyncio.run(run())
+    assert len(got) == 1
+    assert got[0].message == "inside the run"
+
+
+def test_report_progress_is_noop_outside_async_context(tmp_path):
+    # Session.create without `async with` does NOT bind the bus.
+    session = Session.create(HarnessConfig(root_dir=tmp_path / "r2"))
+    got = []
+    session.subscribe(got.append)
+    report_progress("nobody bound")                       # no-op
+    assert got == []
+
+
+def test_session_unbinds_bus_on_exit(tmp_path):
+    from harness.status import current_bus
+
+    async def run():
+        async with Session.create(HarnessConfig(root_dir=tmp_path / "r3")):
+            assert current_bus() is not None
+        assert current_bus() is None
+
+    asyncio.run(run())

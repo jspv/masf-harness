@@ -5,12 +5,13 @@ from __future__ import annotations
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from . import bundles as _bundles
 from .config import HarnessConfig
 from .handles import HandleStore
 from .sandbox import LocalSubprocessSandbox
+from .status import StatusBus, bind_bus
 
 
 @dataclass
@@ -20,6 +21,8 @@ class Session:
     sandbox: LocalSubprocessSandbox
     config: HarnessConfig
     _mcp_connected: list[Any] = field(default_factory=list, init=False, repr=False)
+    status_bus: StatusBus = field(default_factory=StatusBus, init=False, repr=False)
+    _status_cm: Any = field(default=None, init=False, repr=False)
 
     @classmethod
     def create(cls, config: HarnessConfig) -> "Session":
@@ -47,6 +50,10 @@ class Session:
                 continue
             out.append(rel.as_posix())
         return out
+
+    def subscribe(self, callback) -> Callable[[], None]:
+        """Register a status subscriber; returns a zero-arg unsubscribe handle."""
+        return self.status_bus.subscribe(callback)
 
     async def aclose(self) -> None:
         """Close every connected MCP server, then honor the cleanup policy."""
@@ -127,10 +134,17 @@ class Session:
         return functions
 
     async def __aenter__(self) -> "Session":
+        self._status_cm = bind_bus(self.status_bus)
+        self._status_cm.__enter__()
         return self
 
     async def __aexit__(self, *exc: object) -> None:
-        await self.aclose()
+        try:
+            await self.aclose()
+        finally:
+            if self._status_cm is not None:
+                self._status_cm.__exit__(None, None, None)
+                self._status_cm = None
 
     def cleanup(self) -> None:
         if self.root.exists():
