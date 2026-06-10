@@ -16,6 +16,7 @@ from agent_framework import FunctionTool
 from agent_framework._types import Content
 
 from .session import Session
+from .status import report_progress
 
 
 def _is_handle_summary(obj: Any) -> bool:
@@ -109,7 +110,9 @@ def _maybe_spill(session: Session, tool_name: str, result: Any) -> Any:
     size = _spill_size_bytes(result) or 0
     if size > session.config.max_spill_bytes:
         raise SpillLimitExceeded(tool_name, size, session.config.max_spill_bytes)
-    return session.store.put(result, source=f"tool:{tool_name}").summary()
+    handle = session.store.put(result, source=f"tool:{tool_name}")
+    report_progress(f"stored {size} bytes as {handle.id}", tool=tool_name)
+    return handle.summary()
 
 
 def make_spill_parser(session: Session, tool_name: str) -> Callable[[Any], list[Content]]:

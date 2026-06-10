@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import asdict
 
 from ..session import Session
+from ..status import report_progress
 
 
 def run_python(session: Session, code: str | None = None, path: str | None = None,
@@ -14,6 +15,7 @@ def run_python(session: Session, code: str | None = None, path: str | None = Non
     ``load(id)`` / ``save(id, obj)`` / ``emit(obj)`` helpers. Returns the ExecResult fields:
     ``stdout, stderr, result, error, exit_code, new_handles, killed_by``.
     """
+    report_progress("running script in sandbox", tool="run_python")
     if path is not None:
         res = session.sandbox.run_script(path, args)
     elif code is not None:
