@@ -14,6 +14,9 @@ dependencies = [
     "trafilatura>=2.0.0",
 ]
 
+[project.optional-dependencies]
+docs = ["docling>=2.0"]            # heavy + downloads models; opt-in. Enables read_document.
+
 [project.scripts]
 harness = "harness.cli:main"
 
