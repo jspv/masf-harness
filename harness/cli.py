@@ -5,9 +5,11 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from typing import Callable
 
 from .api import Harness
 from .config import HarnessConfig
+from .status import StatusEvent
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -16,17 +18,17 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--model", default="gpt-5-mini", help="Model name.")
     p.add_argument("--root", default=None, help="Workspace root dir (default: a fresh session dir).")
     p.add_argument("-v", "--verbose", action="store_true",
-                   help="Print each tool call (and run_python code) as it happens.")
+                   help="Print live tool status to stderr as the task runs.")
     return p
 
 
-def make_status_printer(write=None):
+def make_status_printer(write: Callable[[str], None] | None = None):
     """A status sink for --verbose: formats each StatusEvent to a line."""
     if write is None:
         def write(line: str) -> None:
             print(line, file=sys.stderr)
 
-    def on_status(event) -> None:
+    def on_status(event: StatusEvent) -> None:
         progress = ""
         if event.current is not None and event.total is not None:
             progress = f" [{event.current:g}/{event.total:g}]"
