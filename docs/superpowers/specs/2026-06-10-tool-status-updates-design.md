@@ -11,7 +11,8 @@
 
 ## Research findings that shaped this design
 
-A spike against the installed stack (`agent-framework-core` 1.7.0; latest 1.8.1) established:
+This feature also bumps `agent-framework-core`/`-openai` to **1.8.1** (from 1.7.0). A spike,
+re-verified against 1.8.1, established:
 
 - **The harness agent is non-streaming.** `create_harness_agent` returns an `Agent` whose
   only public run method is `.run()` — there is no `run_stream`. There is no MAF event
