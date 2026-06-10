@@ -1,10 +1,14 @@
 import asyncio
 
+from agent_framework import FunctionTool
+
+from harness import HarnessConfig, Session
 from harness.mcp_status import (
     inject_progress_tokens,
     install_status_wrappers,
 )
 from harness.status import StatusBus
+from harness.testing import StubChatClient, text
 
 
 # --- fakes mimicking MAF's MCPTool surface + mcp notification objects --------
@@ -160,3 +164,53 @@ def test_emit_error_does_not_break_the_wrapped_handler():
     install_status_wrappers(bus, tool, "srv")
     asyncio.run(tool.logging_callback(_LogParams("hello")))  # must not raise
     assert len(tool.log_seen) == 1                            # original still called
+
+
+class _SeamMCPTool:
+    """A fake MCPTool that exposes the MAF seams, so _attach_mcp wires status into it."""
+
+    def __init__(self):
+        self.name = "fakemcp"
+        self.functions: list = []
+        self.closed = False
+        self._tool_call_meta_by_name: dict = {}
+        self.orig_logs: list = []
+
+    async def logging_callback(self, params):
+        self.orig_logs.append(params)
+
+    async def message_handler(self, message):
+        pass
+
+    async def connect(self):
+        def slow(n: int) -> str:
+            """A slow MCP tool."""
+            return "ok"
+        self.functions = [FunctionTool(func=slow, name="slow", description="slow")]
+
+    async def close(self):
+        self.closed = True
+
+
+def test_attach_mcp_installs_wrappers_and_injects_token(tmp_path):
+    cfg = HarnessConfig(root_dir=tmp_path / "r")
+    mcp = _SeamMCPTool()
+
+    async def run():
+        events = []
+        async with Session.create(cfg) as sess:
+            sess.subscribe(events.append)
+            await sess.create_agent(
+                StubChatClient([text("x")]), agent_instructions="x",
+                tools=[mcp], bundles=("code",),
+            )
+            # token injected for the connected tool
+            assert mcp._tool_call_meta_by_name["slow"]["progressToken"] == "harness:fakemcp:slow"
+            # the wrapped logging handler now emits to the bus AND chains the original
+            await mcp.logging_callback(type("P", (), {"data": "hi", "level": "info"})())
+            return events, mcp
+
+    events, mcp = asyncio.run(run())
+    assert any(e.tool == "mcp:fakemcp" and e.message == "hi" for e in events)
+    assert mcp.orig_logs                              # original logging_callback still called
+    assert mcp.closed
