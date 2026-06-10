@@ -86,4 +86,4 @@ def test_web_extract_emits_extracting_status(tmp_path):
 
     with bind_bus(bus):
         web_extract(sess, "https://e/x", client=_mock_client(handler))
-    assert any(e.tool == "web_extract" for e in events)
+    assert any(e.tool == "web_extract" and "extracting" in e.message.lower() for e in events)
