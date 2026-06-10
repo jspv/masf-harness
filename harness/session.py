@@ -119,15 +119,20 @@ class Session:
         )
 
     async def _attach_mcp(self, tool: Any) -> list:
-        """Connect an MCP server, attach the spill parser to its tools, own its lifecycle."""
+        """Connect an MCP server, attach the spill parser, capture its status, own its lifecycle."""
+        from .mcp_status import inject_progress_tokens, install_status_wrappers
         from .spill import make_spill_parser
 
+        server = getattr(tool, "name", None) or repr(tool)
+        # Install before connect so the wrappers reach the underlying MCP ClientSession.
+        token_map = install_status_wrappers(self.status_bus, tool, server)
         try:
             await tool.connect()
         except Exception as e:  # noqa: BLE001 - add context naming the server, then re-raise
             raise RuntimeError(f"failed to connect MCP server {tool!r}: {e}") from e
         # Register before the parser loop so aclose() still closes this server if the loop raises.
         self._mcp_connected.append(tool)
+        inject_progress_tokens(tool, server, token_map)   # after connect: tools are now loaded
         functions = list(tool.functions)
         for ft in functions:
             ft.result_parser = make_spill_parser(self, ft.name)
