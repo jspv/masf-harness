@@ -17,8 +17,19 @@ def test_tools_default_is_all_bundles(tmp_path):
     assert names == {
         "inspect_handle", "run_python",
         "read_file", "write_file", "list_files", "search",
-        "fetch_url", "web_search", "web_extract",
+        "fetch_url", "web_search", "web_extract", "read_document",
     }
+
+
+def test_read_document_is_in_web_bundle(tmp_path):
+    sess = _session(tmp_path)
+    assert "read_document" in {t.__name__ for t in sess.tools("web")}
+    assert "read_document" not in {t.__name__ for t in sess.tools("files")}
+
+
+def test_web_instructions_mention_read_document(tmp_path):
+    sess = _session(tmp_path)
+    assert "read_document" in sess.harness_instructions("web")
 
 
 def test_harness_instructions_compose_by_bundle(tmp_path):
