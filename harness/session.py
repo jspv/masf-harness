@@ -11,7 +11,7 @@ from . import bundles as _bundles
 from .config import HarnessConfig
 from .handles import HandleStore
 from .sandbox import LocalSubprocessSandbox
-from .status import StatusBus, bind_bus
+from .status import StatusBus, StatusEvent, bind_bus
 
 
 @dataclass
@@ -51,7 +51,7 @@ class Session:
             out.append(rel.as_posix())
         return out
 
-    def subscribe(self, callback) -> Callable[[], None]:
+    def subscribe(self, callback: Callable[[StatusEvent], None]) -> Callable[[], None]:
         """Register a status subscriber; returns a zero-arg unsubscribe handle."""
         return self.status_bus.subscribe(callback)
 
