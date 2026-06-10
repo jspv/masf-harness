@@ -12,6 +12,7 @@ def test_defaults_are_sensible():
     assert cfg.sandbox.timeout_s == 30.0
     assert "pandas" in cfg.sandbox.preinstalled
     assert cfg.fetch.allowed_schemes == ("http", "https")
+    assert cfg.documents.ocr is False        # OCR off by default (born-digital docs)
 
 
 def test_nested_configs_are_independent_between_instances():

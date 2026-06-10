@@ -11,6 +11,7 @@ from ..session import Session
 # search` would get the *function* `search` (the package __init__ re-exports it, shadowing
 # the submodule of the same name) -- so always alias the functions, not the modules.
 from .code import run_python as _run_python
+from .documents import read_document as _read_document
 from .fetch import fetch_url as _fetch_url
 from .files import list_files as _list_files, read_file as _read_file, write_file as _write_file
 from .inspect import inspect_handle as _inspect_handle
@@ -61,5 +62,10 @@ def build_tools(session: Session) -> list:
         """Fetch a URL's clean content via the search provider; returns a markdown handle."""
         return _web_extract(session, url)
 
+    def read_document(source: str) -> dict:
+        """Convert a document (PDF/Office/spreadsheet) at a workspace path or http(s) URL to a
+        clean markdown handle with tables preserved; returns the handle summary."""
+        return _read_document(session, source)
+
     return [read_file, write_file, list_files, search, fetch_url, run_python, inspect_handle,
-            web_search, web_extract]
+            web_search, web_extract, read_document]

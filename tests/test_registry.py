@@ -14,13 +14,20 @@ def test_build_tools_returns_expected_named_callables(tmp_path):
     assert names == {
         "read_file", "write_file", "list_files", "search",
         "fetch_url", "run_python", "inspect_handle",
-        "web_search", "web_extract",
+        "web_search", "web_extract", "read_document",
     }
 
 
 def test_build_tools_includes_web_tools(tmp_path):
     names = {t.__name__ for t in build_tools(_session(tmp_path))}
     assert {"web_search", "web_extract"} <= names
+
+
+def test_build_tools_includes_read_document(tmp_path):
+    tools = {t.__name__: t for t in build_tools(_session(tmp_path))}
+    assert "read_document" in tools
+    params = list(inspect.signature(tools["read_document"]).parameters)
+    assert params == ["source"]
 
 
 def test_wrapped_tools_do_not_expose_session_param(tmp_path):

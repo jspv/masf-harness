@@ -12,7 +12,7 @@ CORE_TOOL_NAMES: tuple[str, ...] = ("inspect_handle",)
 BUNDLE_TOOL_NAMES: dict[str, tuple[str, ...]] = {
     "code": ("run_python",),
     "files": ("read_file", "write_file", "list_files", "search"),
-    "web": ("fetch_url", "web_search", "web_extract"),
+    "web": ("fetch_url", "web_search", "web_extract", "read_document"),
 }
 
 CORE_INSTRUCTIONS = (
@@ -36,7 +36,9 @@ BUNDLE_INSTRUCTIONS: dict[str, str] = {
     ),
     "web": (
         "Use web_search to find pages, fetch_url to retrieve a page as clean markdown, and "
-        "web_extract for clean content. Fetched bodies are stored as handles."
+        "web_extract for clean content. Fetched bodies are stored as handles. "
+        "Use read_document to turn a PDF/Office/spreadsheet file (a workspace path or an "
+        "http(s) URL) into a clean markdown handle with tables preserved."
     ),
 }
 
