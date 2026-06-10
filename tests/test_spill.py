@@ -1,10 +1,12 @@
 import json
 
 import pandas as pd
+import pytest
 from agent_framework._types import Content
 
 from harness import HarnessConfig, Session
 from harness.spill import (
+    SpillLimitExceeded,
     looks_like_mcp,
     make_spill_parser,
     normalize_mcp_result,
@@ -12,8 +14,9 @@ from harness.spill import (
 )
 
 
-def _session(tmp_path):
-    return Session.create(HarnessConfig(root_dir=tmp_path / "r", spill_threshold_bytes=64))
+def _session(tmp_path, **cfg):
+    cfg.setdefault("spill_threshold_bytes", 64)
+    return Session.create(HarnessConfig(root_dir=tmp_path / "r", **cfg))
 
 
 def _as_text(parsed) -> str:
@@ -134,3 +137,54 @@ def test_normalize_preserves_non_text_content_unchanged():
 def test_normalize_leaves_non_content_values_unchanged():
     assert normalize_mcp_result({"a": 1}) == {"a": 1}
     assert normalize_mcp_result([1, 2, 3]) == [1, 2, 3]
+
+
+# --- max_spill_bytes: the upper bound of the spill-over zone -------------------
+
+def test_spill_raises_loudly_when_over_max(tmp_path):
+    # An unbounded return from an untrusted tool must fail, not silently fill disk.
+    sess = _session(tmp_path, max_spill_bytes=1024)
+    parse = make_spill_parser(sess, "greedy_tool")
+    with pytest.raises(SpillLimitExceeded) as exc:
+        parse({"rows": list(range(5000))})       # well over 1 KB
+    assert exc.value.tool_name == "greedy_tool"
+    assert exc.value.limit == 1024
+    assert exc.value.size > 1024
+    assert not sess.handles                       # nothing was written
+
+
+def test_max_spill_bytes_is_overridable(tmp_path):
+    # The same payload that tripped a small cap rides through a generous one.
+    sess = _session(tmp_path, max_spill_bytes=10_000_000)
+    parse = make_spill_parser(sess, "bulk_tool")
+    parse({"rows": list(range(5000))})
+    assert sess.handles                           # spilled cleanly, no error
+
+
+def test_dataframe_over_max_spill_raises(tmp_path):
+    sess = _session(tmp_path, max_spill_bytes=256)
+    parse = make_spill_parser(sess, "frame_tool")
+    big = pd.DataFrame({"a": list(range(10_000)), "b": list(range(10_000))})
+    with pytest.raises(SpillLimitExceeded):
+        parse(big)
+    assert not sess.handles
+
+
+def test_well_behaved_pagination_passes_through(tmp_path):
+    # A small, paginated page stays in context untouched -- cursor and all.
+    sess = _session(tmp_path)
+    parse = make_spill_parser(sess, "paged_tool")
+    page = {"value": [{"id": 1}], "nextLink": "opaque-cursor"}
+    parsed = parse([Content.from_text(json.dumps(page))])
+    assert not sess.handles                       # under threshold -> not spilled
+    assert "opaque-cursor" in _as_text(parsed)    # the agent can still paginate
+
+
+def test_spilled_result_preserves_pagination_cursor(tmp_path):
+    # If a large page does spill, its cursor must survive losslessly in the handle.
+    sess = _session(tmp_path)
+    parse = make_spill_parser(sess, "big_paged_tool")
+    page = {"value": [{"id": i} for i in range(500)], "nextLink": "opaque-cursor"}
+    parse([Content.from_text(json.dumps(page))])
+    hid = next(iter(sess.handles))
+    assert sess.store.get(hid)["nextLink"] == "opaque-cursor"
