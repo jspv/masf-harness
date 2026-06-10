@@ -28,6 +28,12 @@ Requires **Python 3.12** and [`uv`](https://docs.astral.sh/uv/). `agent-framewor
 uv sync --prerelease=allow
 ```
 
+Document ingestion (`read_document`) uses [Docling](https://github.com/DS4SD/docling), an optional heavy dependency that downloads models on first use. Enable it with:
+
+```bash
+uv sync --prerelease=allow --extra docs
+```
+
 Create a `.env` in the project root:
 
 ```bash
@@ -132,6 +138,7 @@ The agent gets nine root-confined tools. Domain data sources are *your* tools/MC
 | `inspect_handle(id, …)` | Deeper on-demand look at a handle (fuller schema, more preview, optional stats) |
 | `web_search(query, max_results=5)` | Tavily web search (needs `TAVILY_API_KEY`) |
 | `web_extract(url)` | Tavily clean-content extraction |
+| `read_document(source)` | A workspace path or URL → clean markdown handle (tables preserved) via Docling; needs the `docs` extra |
 
 The loop follows the **search → read → analyze** triad: `search` to locate, `read_file` to load the right slice, `run_python` to analyze.
 
@@ -191,11 +198,10 @@ tests/             mirror of the package (unit + integration + security tests)
 
 ## Status & roadmap
 
-Implemented: foundation (handles, sandbox, path-jail), the agent loop + tool surface, the `Harness`/`solve()` API + CLI, and web research (Tavily search/extract, Markdown fetch).
+Implemented: foundation (handles, sandbox, path-jail), the agent loop + tool surface, the `Harness`/`solve()` API + CLI, web research (Tavily search/extract, Markdown fetch), and **document ingestion** (`read_document` via Docling — PDF/spreadsheet → Markdown with tables).
 
 Planned (documented under `docs/superpowers/`):
 
-- **Document ingestion** — `read_document` via Docling (PDF/spreadsheet → Markdown *with tables*).
 - **Container / micro-VM sandbox tier** — airtight code isolation behind the existing `SandboxExecutor` interface.
 - **MAF skills + memory providers** (v1.1) and a MAF Workflow durability / HITL outer shell.
 
