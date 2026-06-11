@@ -52,6 +52,7 @@ class HarnessConfig:
     max_output_tokens: int = 4096
     root_dir: Path | None = None  # None -> a session dir is created under ./.harness/sessions/
     cleanup: bool = False  # delete the root on async-context exit (throwaway runs)
+    idle_ttl_s: float | None = None  # continuous-session idle TTL (None = never expire)
     sandbox: SandboxConfig = field(default_factory=SandboxConfig)
     fetch: FetchConfig = field(default_factory=FetchConfig)
     search: SearchConfig = field(default_factory=SearchConfig)

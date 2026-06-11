@@ -4,6 +4,36 @@ from harness import HarnessConfig, Harness, report_progress
 from harness.testing import StubChatClient, text, tool_call
 
 
+def test_solve_is_ephemeral_by_default(tmp_path):
+    client = StubChatClient([text("the answer")])
+    h = Harness(HarnessConfig(root_dir=tmp_path / "r"), client=client)
+    result = h.solve("go")
+    assert result.final_text == "the answer"
+    assert not (tmp_path / "r").exists()             # one-shot reaped its workspace
+
+
+def test_solve_keep_retains_workspace(tmp_path):
+    client = StubChatClient([text("the answer")])
+    h = Harness(HarnessConfig(root_dir=tmp_path / "k"), client=client)
+    result = h.solve("go", keep=True)
+    assert (tmp_path / "k").exists()                 # audit trail retained
+    assert result.session_dir == tmp_path / "k"
+
+
+def test_aopen_returns_persistent_conversation(tmp_path):
+    import asyncio
+
+    async def run():
+        h = Harness(HarnessConfig(root_dir=tmp_path / "base"), client=StubChatClient([text("x")]))
+        conv = await h.aopen("t1")
+        same = await h.aopen("t1")
+        assert conv is same                          # open-or-create via the manager
+        await h.aclose_sessions()
+        return conv
+
+    asyncio.run(run())
+
+
 def noisy(n: int) -> str:
     """Emit two progress updates, then return."""
     report_progress("step A", tool="noisy", current=1, total=2)
@@ -81,7 +111,7 @@ class _FailingClient(StubChatClient):
 def test_solve_preserves_error_on_agent_failure(tmp_path):
     cfg = HarnessConfig(root_dir=tmp_path / "err")
     h = Harness(cfg, client=_FailingClient([text("unused")]), tools=[])
-    result = h.solve("go")
+    result = h.solve("go", keep=True)       # keep retains the work-so-far / audit trail
     assert result.error is not None
     assert "RuntimeError" in result.error
     assert result.final_text == ""

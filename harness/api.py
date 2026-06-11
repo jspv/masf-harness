@@ -35,6 +35,7 @@ class Harness:
         self._tools = tools or []
         self._bundles = bundles
         self._on_status = on_status
+        self._manager = None
         if self.config.search.api_key is None:
             import os
 
@@ -48,31 +49,40 @@ class Harness:
         from agent_framework.openai import OpenAIChatClient
         return OpenAIChatClient(model=self.config.model, env_file_path=".env")
 
+    def _sessions(self):
+        if self._manager is None:
+            from .manager import SessionManager
+            self._manager = SessionManager(self, idle_ttl_s=self.config.idle_ttl_s)
+        return self._manager
+
+    async def aopen(self, session_id: str | None = None, *, tools: list | None = None):
+        """Open (or resume) a persistent continuous Conversation by id."""
+        return await self._sessions().aopen(session_id, tools=tools)
+
+    async def aclose_sessions(self) -> None:
+        """Close every live continuous Conversation (host shutdown)."""
+        if self._manager is not None:
+            await self._manager.aclose()
+
+    async def sweep_sessions(self) -> None:
+        """Reap idle continuous Conversations past their TTL."""
+        if self._manager is not None:
+            await self._manager.sweep()
+
     async def asolve(self, problem: str, tools: list | None = None, *,
-                     on_status: _StatusSink | None = None) -> Result:
-        final_text, error = "", None
+                     on_status: _StatusSink | None = None, keep: bool = False) -> Result:
+        from .conversation import Conversation
+
         sink = on_status if on_status is not None else self._on_status
-        async with Session.create(self.config) as session:
-            if sink is not None:
-                session.subscribe(sink)   # unsubscribe handle unneeded: the bus dies with the Session
-            agent = await session.create_agent(
-                self._make_client(),
-                agent_instructions=None,
-                tools=self._tools + (tools or []),
-                bundles=self._bundles,
-            )
-            try:
-                response = await agent.run(problem)
-                final_text = response.text
-            except Exception as e:  # noqa: BLE001 - surface, don't crash; keep work-so-far
-                error = f"{type(e).__name__}: {e}"
-            return Result(
-                final_text=final_text,
-                handles=dict(session.handles),
-                files=session.artifacts,
-                session_dir=session.root,
-                error=error,
-            )
+        conv = await Conversation.acreate(
+            id="oneshot", config=self.config, client=self._make_client(),
+            tools=self._tools + (tools or []), bundles=self._bundles, reap_on_close=not keep)
+        if sink is not None:
+            conv.session.subscribe(sink)
+        try:
+            return await conv.aask(problem)
+        finally:
+            await conv.aclose()
 
     async def agui_stream(self, input_data: dict, *, tools: list | None = None,
                           **agui_kwargs: Any) -> AsyncIterator[Any]:
@@ -97,12 +107,12 @@ class Harness:
                 yield event
 
     def solve(self, problem: str, tools: list | None = None, *,
-              on_status: _StatusSink | None = None) -> Result:
-        return asyncio.run(self.asolve(problem, tools=tools, on_status=on_status))
+              on_status: _StatusSink | None = None, keep: bool = False) -> Result:
+        return asyncio.run(self.asolve(problem, tools=tools, on_status=on_status, keep=keep))
 
 
 def solve(problem: str, *, tools: list | None = None,
           config: HarnessConfig | None = None, client: Any | None = None,
-          on_status: _StatusSink | None = None) -> Result:
-    """One-shot convenience: build a Harness and solve a single problem."""
-    return Harness(config, client=client, tools=tools, on_status=on_status).solve(problem)
+          on_status: _StatusSink | None = None, keep: bool = False) -> Result:
+    """One-shot convenience: build a Harness and solve a single problem (ephemeral unless keep)."""
+    return Harness(config, client=client, tools=tools, on_status=on_status).solve(problem, keep=keep)
