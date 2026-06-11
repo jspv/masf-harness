@@ -14,9 +14,8 @@ import subprocess
 from pathlib import Path
 
 from .config import SandboxConfig
-from .sandbox import _LaunchResult, _OrchestratedSandbox, _RunContext, _as_text
+from .sandbox import _RUNTIME_DIR, _LaunchResult, _OrchestratedSandbox, _RunContext, _as_text
 
-_RUNTIME_DIR = Path(__file__).resolve().parent / "runtime"
 _PIDS_LIMIT = 256
 
 
@@ -74,6 +73,7 @@ class ContainerSandbox(_OrchestratedSandbox):
         try:
             proc = subprocess.run(argv, capture_output=True, text=True,
                                   timeout=ctx.config.timeout_s)
+            # 137 == 128 + SIGKILL: the runtime killed the container, typically the memory cap.
             killed_by = "killed" if proc.returncode == 137 else None
             return _LaunchResult(proc.stdout, proc.stderr, proc.returncode, killed_by=killed_by)
         except subprocess.TimeoutExpired as e:
