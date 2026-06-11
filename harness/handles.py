@@ -39,6 +39,7 @@ class HandleStore:
         self.dir.mkdir(parents=True, exist_ok=True)
         self._handles: dict[str, Handle] = {}
         self._counter = 0
+        self._load_manifest()
 
     def _new_id(self) -> str:
         self._counter += 1
@@ -75,6 +76,7 @@ class HandleStore:
         else:
             raise ValueError(f"unknown handle kind: {kind!r}")
         self._handles[hid] = handle
+        self._save_manifest()
         return handle
 
     def _write_binary(self, hid: str, data: bytes, source: str, ext: str | None) -> Handle:
@@ -126,16 +128,15 @@ class HandleStore:
         if hid.startswith("h") and hid[1:].isdigit():
             self._counter = max(self._counter, int(hid[1:]))
 
-    def register(self, record: dict[str, Any]) -> Handle:
-        """Register a handle whose file already exists (e.g. written by the sandbox child).
+    def _register_record(self, record: dict[str, Any]) -> Handle:
+        """Register a handle whose file already exists (sandbox child, or manifest rehydration).
 
-        The ``path`` is supplied by the lower-trust child over the jsonl channel, so it
-        is run through ``safe_path``: a record pointing outside the root is rejected here
-        rather than letting the trusted parent later read an arbitrary file.
+        The ``path`` is supplied by lower-trust input, so it is run through ``safe_path``: a
+        record pointing outside the root is rejected here rather than read later.
         """
         try:
             handle = Handle(**record)
-        except TypeError as e:  # cross-process contract boundary — give a useful message
+        except TypeError as e:  # contract boundary — give a useful message
             raise ValueError(f"invalid handle record {record!r}: {e}") from e
         try:
             safe_path(self.root, handle.path)
@@ -144,6 +145,37 @@ class HandleStore:
         self._handles[handle.id] = handle
         self._advance_counter(handle.id)
         return handle
+
+    def register(self, record: dict[str, Any]) -> Handle:
+        """Register a handle whose file already exists; persists the manifest."""
+        handle = self._register_record(record)
+        self._save_manifest()
+        return handle
+
+    @property
+    def _manifest_file(self) -> Path:
+        return self.dir / "_manifest.json"
+
+    def _save_manifest(self) -> None:
+        """Persist {id: summary} atomically so a new HandleStore on this root can rehydrate."""
+        tmp = self.dir / "_manifest.json.tmp"
+        tmp.write_text(json.dumps(self.manifest()), encoding="utf-8")
+        tmp.replace(self._manifest_file)
+
+    def _load_manifest(self) -> None:
+        """Restore handles + the id counter from a prior session on this root. Tolerant:
+        a corrupt record is skipped, not fatal."""
+        if not self._manifest_file.exists():
+            return
+        try:
+            records = json.loads(self._manifest_file.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return
+        for record in records.values():
+            try:
+                self._register_record(record)
+            except (ValueError, KeyError):
+                continue
 
     def get(self, handle_id: str) -> Any:
         try:

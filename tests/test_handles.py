@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from harness.handles import Handle, HandleStore
+from harness.handles import HandleStore
 
 
 def test_put_and_get_json_roundtrip(tmp_path):
@@ -114,3 +114,28 @@ def test_register_external_record_round_trips(tmp_path):
     h = store.register(rec)
     assert h.id == "h7"
     assert store.get("h7") == "from child"
+
+
+def test_handle_store_rehydrates_manifest_and_counter(tmp_path):
+    from harness.handles import HandleStore
+    s1 = HandleStore(tmp_path)
+    h1 = s1.put({"a": 1}, source="t")
+    h2 = s1.put("hello", source="t")
+    assert (h1.id, h2.id) == ("h1", "h2")
+
+    s2 = HandleStore(tmp_path)                       # new store, same root -> rehydrate
+    assert set(s2.manifest().keys()) == {"h1", "h2"}
+    assert s2.get("h1") == {"a": 1}                  # backing file still readable
+    assert s2.put("again", source="t").id == "h3"    # id counter resumed (no h1 collision)
+
+
+def test_rehydrate_skips_corrupt_record(tmp_path):
+    import json
+    from harness.handles import HandleStore
+    HandleStore(tmp_path).put({"a": 1}, source="t")   # valid h1, persists manifest
+    mf = tmp_path / "handles" / "_manifest.json"
+    data = json.loads(mf.read_text())
+    data["bad"] = {"id": "bad"}                        # missing required Handle fields
+    mf.write_text(json.dumps(data))
+    s2 = HandleStore(tmp_path)                         # must not raise
+    assert "h1" in s2.manifest() and "bad" not in s2.manifest()
