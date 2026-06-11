@@ -17,6 +17,16 @@ def _sandbox(tmp_path, config):
     return ContainerSandbox(root=tmp_path, store=None, config=config, runtime="podman")
 
 
+def test_run_argv_maps_userns_for_podman_only(tmp_path):
+    cfg = SandboxConfig(backend="container")
+    # podman: rootless maps host user -> container-root, so keep-id is needed for the bind mount
+    podman = ContainerSandbox(root=tmp_path, store=None, config=cfg, runtime="podman")
+    assert "--userns=keep-id" in podman._build_run_argv(_ctx(tmp_path, cfg), "img:abc", layer=None)
+    # docker rootless uses a different model and rejects keep-id
+    docker = ContainerSandbox(root=tmp_path, store=None, config=cfg, runtime="docker")
+    assert "--userns=keep-id" not in docker._build_run_argv(_ctx(tmp_path, cfg), "img:abc", layer=None)
+
+
 def test_run_argv_blocks_network_by_default(tmp_path):
     cfg = SandboxConfig(backend="container")
     sb = _sandbox(tmp_path, cfg)
