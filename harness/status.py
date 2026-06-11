@@ -4,8 +4,9 @@ A tool calls ``report_progress(...)`` while it runs; the call routes through a
 ``contextvars`` lookup to the ``StatusBus`` the active ``Session`` bound for this run, which
 fans the event out to subscribers (e.g. a ``Harness(on_status=...)`` callback or the CLI
 ``--verbose`` printer). Outside a bound run, ``report_progress`` is a no-op, so tools can
-call it unconditionally. The harness agent is non-streaming, so this is entirely our own
-channel -- no MAF stream is involved.
+call it unconditionally. This is a side-band channel: mid-tool and MCP progress are not part
+of MAF's response stream (which carries text deltas and tool-call lifecycle), so the harness
+delivers them itself.
 """
 
 from __future__ import annotations
