@@ -114,6 +114,34 @@ def test_status_to_agui_maps_fields():
     assert ev.value == {"tool": "run_python", "message": "running", "current": 1, "total": 3}
 
 
+@pytest.mark.skipif(not _HAS_AGUI, reason="needs the agui extra (ag-ui-protocol)")
+def test_agui_stream_reuses_workspace_per_thread(tmp_path):
+    import asyncio
+
+    from harness import Harness, HarnessConfig
+    from harness.testing import StubChatClient, text, tool_call
+
+    client = StubChatClient([
+        tool_call("run_python", {"code": "from harness_sandbox import save\nsave('h1', {'x': 1})\n"}),
+        text("saved"),
+        tool_call("run_python", {"code": "from harness_sandbox import load, save\nsave('h2', load('h1'))\n"}),
+        text("done"),
+    ])
+    h = Harness(HarnessConfig(root_dir=tmp_path / "base"), client=client, bundles=("code",))
+
+    async def run():
+        async for _ in h.agui_stream({"messages": [{"role": "user", "content": "save"}], "threadId": "t1"}):
+            pass
+        async for _ in h.agui_stream({"messages": [{"role": "user", "content": "reload"}], "threadId": "t1"}):
+            pass
+        conv = h._sessions().get("t1")               # same workspace reused across both calls
+        ok = conv is not None and "h1" in conv.session.handles and conv.session.store.get("h2") == {"x": 1}
+        await h.aclose_sessions()
+        return ok
+
+    assert asyncio.run(run())
+
+
 def test_agui_event_stream_errors_clearly_without_the_extra(monkeypatch):
     # Simulate the extra being absent even though it's installed in this env.
     monkeypatch.setitem(sys.modules, "agent_framework_ag_ui", None)

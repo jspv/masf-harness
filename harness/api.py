@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, AsyncIterator, Callable
 
 from .config import HarnessConfig
-from .session import Session
 from .status import StatusEvent
 
 if TYPE_CHECKING:
@@ -103,25 +102,19 @@ class Harness:
 
     async def agui_stream(self, input_data: dict, *, tools: list | None = None,
                           **agui_kwargs: Any) -> AsyncIterator[Any]:
-        """Yield AG-UI events for one request (messages/state/tools in ``input_data``).
+        """Yield AG-UI events for one request, reusing a persistent workspace per ``threadId``.
 
-        Streams the agent's text + tool calls (via the official AG-UI converter) with the
-        harness's StatusBus overlaid as ``harness.status`` CustomEvents. ``input_data`` carries
-        the AG-UI request: ``messages`` (multi-turn history), request-defined frontend ``tools``,
-        and ``state``. ``**agui_kwargs`` pass to ``AgentFrameworkAgent`` (e.g. ``state_schema``,
-        ``require_confirmation``). Requires the ``agui`` extra.
+        The workspace (handles, sandbox files) persists across turns; conversation history stays
+        with the official AG-UI wrapper (CopilotKit replays ``messages``). The thread's workspace
+        is reaped only by ``close``/TTL, never at end-of-request. Requires the ``agui`` extra.
         """
         from .agui import agui_event_stream
 
-        async with Session.create(self.config) as session:
-            agent = await session.create_agent(
-                self._make_client(),
-                agent_instructions=None,
-                tools=self._tools + (tools or []),
-                bundles=self._bundles,
-            )
-            async for event in agui_event_stream(agent, session.status_bus, input_data, **agui_kwargs):
-                yield event
+        thread_id = input_data.get("threadId") or input_data.get("thread_id")
+        conv = await self._sessions().aopen(thread_id, tools=tools)
+        async for event in agui_event_stream(conv.agent, conv.session.status_bus, input_data,
+                                             **agui_kwargs):
+            yield event
 
     def solve(self, problem: str, tools: list | None = None, *,
               on_status: _StatusSink | None = None, keep: bool = False) -> Result:
