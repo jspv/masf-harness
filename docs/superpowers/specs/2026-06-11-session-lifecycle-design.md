@@ -61,7 +61,7 @@ Conversation (one per conversation id)
 
 | Unit | Create/Modify | Responsibility |
 |---|---|---|
-| `harness/conversation.py` | **Create** | `Conversation`: holds Session + agent + AgentSession; `ask`/`aask`/`aclose`; single-flight lock; reaps workspace on close |
+| `harness/conversation.py` | **Create** | `Conversation`: holds Session + agent + AgentSession; `aask`/`aclose` (async-first; sync deferred); single-flight lock; reaps workspace on close |
 | `harness/manager.py` | **Create** | `SessionManager` + `ConversationStore` (in-memory): open-or-create, get, close, lazy-TTL `sweep` |
 | `harness/handles.py` | Modify | Persist `handles/_manifest.json` on `put`/`register`; rehydrate on init (resume manifest + id counter) |
 | `harness/api.py` | Modify | `Harness.open()`/`aopen()`; `solve(keep=False)` ephemeral default; `agui_stream` resolves `threadId` via the manager |
@@ -87,18 +87,21 @@ the model is correct and the future disk-resumable store has its seam:
 result = harness.solve("question")              # open ephemeral -> ask -> reap workspace
 result = harness.solve("question", keep=True)    # opt out: retain the audit trail
 
-# Continuous (held until closed / expired)
-conv = harness.open(session_id=None)             # generates an id, or pass your own (e.g. threadId)
-r1 = conv.ask("load sales.csv and summarize")
-r2 = conv.ask("now filter to EU")                # sees r1's handles + conversation history
-conv.close()                                     # reap workspace; drop from registry
+# Continuous (held until closed / expired) — async (a persistent agent + MCP need one stable loop)
+conv = await harness.aopen(session_id=None)      # generates an id, or pass your own (e.g. threadId)
+r1 = await conv.aask("load sales.csv and summarize")
+r2 = await conv.aask("now filter to EU")         # sees r1's handles + conversation history
+await conv.aclose()                              # reap workspace; drop from registry
 
 # AG-UI: threadId -> registry Conversation (callers unchanged)
 async for ev in harness.agui_stream(input_data): ...
 ```
 
-Async variants throughout: `asolve`, `aopen`, `Conversation.aask`/`aclose`. `solve()` becomes a
-thin wrapper: `open(ephemeral)` → `ask` → `close` (reap unless `keep=True`).
+`solve()`/`asolve()` (one-shot) stay sync+async; `solve` becomes a thin wrapper:
+`open(ephemeral)` → `ask` → `close` (reap unless `keep=True`). **Continuous is async-first in v1**
+(`aopen`/`aask`/`aclose`): the AG-UI host and an async terminal loop both have a single stable
+event loop, which the persistent agent + MCP connections require. A **sync** `conv.ask()`
+convenience (which needs a per-conversation background loop) is deferred — see Out of scope.
 
 ## Lifecycle & cleanup
 
@@ -178,6 +181,9 @@ Cohesive but sizable; the plan phases it: (1) handle manifest persistence + rehy
 + `Harness.open`; (5) `agui_stream` via the manager; (6) docs.
 
 ## Out of scope (deferred)
+- **Sync continuous (`conv.ask()`/`harness.open()`):** needs a per-conversation background event
+  loop so the persistent agent + MCP stay on one loop across sync calls. Both v1 continuous
+  frontends are async, so this is a fast-follow, not v1. (One-shot `solve()` stays sync.)
 - Disk-backed / distributed `ConversationStore` and cross-process resume (the pluggable option;
   the manifest persistence + store interface are the seams it will use).
 - A mandatory background sweeper thread (hosts call `sweep()` on their own cadence).
