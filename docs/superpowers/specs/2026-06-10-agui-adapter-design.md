@@ -29,33 +29,57 @@
   conversion, fetch, spill, MCP logging/progress).
 - **SSE encoding is in the lightweight protocol package.** `ag_ui.encoder.EventEncoder().encode(event)`
   yields `data: {json}\n\n`, so the transport needs no extra harness code.
+- **CopilotKit's richer features come "for free" through the official wrapper — verified.**
+  `AgentFrameworkAgent` already implements frontend/generative-UI tools, shared state, HITL, and
+  multi-turn, and they work *through* the harness agent because it is a standard streaming MAF
+  agent:
+  - **Frontend tools (proven by spike):** a tool defined only in the AG-UI request
+    (`input_data["tools"]`, not registered in the harness) was *called by the harness agent* —
+    `ToolCallStart(show_chart)` + streamed args. The wrapper converts and merges request tools
+    into the agent's per-run `tools=` (`_agent_run.py:832` → `merge_tools` →
+    `agent.run(messages, tools=merged, stream=True)`).
+  - **Shared state:** `state_schema` / `predict_state_config` / `state_update`, with
+    `STATE_SNAPSHOT`/`STATE_DELTA` emitted from `input_data["state"]`.
+  - **HITL:** an approval registry (`_pending_approvals`) + predictive-state confirmation.
+  - **Multi-turn:** CopilotKit sends the full message history in `input_data["messages"]`.
+  - Corroborated by CopilotKit's MAF-Python AG-UI docs (shared state via `useCoAgent`, HITL,
+    generative UI).
 
 ## Scope
+
+The adapter is a **faithful, thin passthrough to `AgentFrameworkAgent`** that adds the status
+overlay and session lifecycle, and **strips nothing** — so the wrapper's full feature set
+(streaming text, tool calls, frontend tools, shared state, HITL, multi-turn) is available to the
+developer.
 
 **In scope (v1):**
 - An optional `agui` dependency extra (`agent-framework-ag-ui`).
 - `harness/agui.py`: the `StatusEvent → CustomEvent` mapping, a generic **status-overlay merge**
-  of two async event sources, and an `agui_event_stream` helper that wraps
-  `AgentFrameworkAgent` and applies the overlay.
-- `Harness.agui_stream(input_data)`: a convenience async generator that builds the session +
-  agent and yields the merged AG-UI event stream (mirrors `asolve`'s session lifecycle).
+  of two async event sources, and an `agui_event_stream` helper that wraps `AgentFrameworkAgent`
+  and applies the overlay. It **forwards** the wrapper's knobs — `state_schema`,
+  `predict_state_config`, `require_confirmation`, `name`, `description` — so shared state / HITL
+  are enable-able by the developer; and passes `input_data` straight through so request-defined
+  frontend tools, prior `state`, and message history reach the agent.
+- `Harness.agui_stream(input_data, **agui_kwargs)`: a convenience async generator that builds the
+  session + agent and yields the merged AG-UI event stream (mirrors `asolve`'s session lifecycle),
+  forwarding `**agui_kwargs` to `agui_event_stream`.
 - `examples/agui_server.py`: a runnable ~12-line FastAPI/SSE endpoint for CopilotKit.
 
-**Out of scope (noted for later):**
-- CopilotKit **shared state** (`useCoAgent` / `STATE_SNAPSHOT`), **frontend/generative-UI
-  tools**, and **human-in-the-loop** approval. The harness is an autonomous one-shot solver, so
-  v1 sets `require_confirmation=False` (tools auto-run) and does not wire interactive state.
-- Multi-turn conversation history beyond the latest user message.
+**Not in scope (by nature, not by restriction):**
+- The harness does **not implement** shared-state or HITL *logic* itself — it forwards the
+  wrapper's parameters so the developer configures them (a `state_schema`, approval-mode tools).
+  An autonomous harness with default tools simply won't exercise them unless the developer opts in.
 - Shipping the FastAPI server as core (it stays an example; transport is the developer's).
+- Generative-UI **rendering** (a frontend concern); the harness only emits the events.
 
 ## Architecture
 
 ```
-Harness.agui_stream(input_data)
+Harness.agui_stream(input_data, **agui_kwargs)
   └─ async with Session.create(config)            # owns the StatusBus, bound for the run
        agent = session.create_agent(client, …)    # the streaming harness agent
-       agui_event_stream(agent, session.status_bus, input_data)
-         └─ AgentFrameworkAgent(agent, require_confirmation=False).run(input_data)   # official → AG-UI events
+       agui_event_stream(agent, session.status_bus, input_data, **agui_kwargs)
+         └─ AgentFrameworkAgent(agent, **agui_kwargs).run(input_data)   # official → AG-UI events
             merged with session.status_bus  →  one AsyncIterator[BaseEvent]
   developer encodes each event via ag_ui EventEncoder → SSE → CopilotKit
 ```
@@ -68,8 +92,8 @@ auth, hosting) is the developer's — shown by the example, not owned by the har
 
 | Unit | Responsibility | Depends on |
 |---|---|---|
-| `harness/agui.py` (new) | `status_to_agui(event)`; `merge_status(events, bus)` (the overlay); `agui_event_stream(agent, bus, input_data, *, require_confirmation=False)` (lazy-imports `agent-framework-ag-ui`) | `status`, `ag-ui-protocol`, `agent-framework-ag-ui` (extra) |
-| `harness/api.py` (modify) | `Harness.agui_stream(input_data, tools=None)` — session+agent lifecycle, delegates to `agui_event_stream` | `agui`, `session` |
+| `harness/agui.py` (new) | `status_to_agui(event)`; `merge_status(events, bus)` (the overlay); `agui_event_stream(agent, bus, input_data, **agui_kwargs)` (lazy-imports `agent-framework-ag-ui`, forwards `**agui_kwargs` to `AgentFrameworkAgent`) | `status`, `ag-ui-protocol`, `agent-framework-ag-ui` (extra) |
+| `harness/api.py` (modify) | `Harness.agui_stream(input_data, *, tools=None, **agui_kwargs)` — session+agent lifecycle, delegates to `agui_event_stream` | `agui`, `session` |
 | `pyproject.toml` (modify) | `[project.optional-dependencies] agui = ["agent-framework-ag-ui>=1.0.0rc4"]` | — |
 | `examples/agui_server.py` (new) | Runnable FastAPI/SSE endpoint for CopilotKit | `Harness.agui_stream`, `ag_ui.encoder`, fastapi (dev-installed) |
 
@@ -83,14 +107,17 @@ def status_to_agui(event: StatusEvent) -> CustomEvent:
 async def merge_status(events: AsyncIterator[BaseEvent], bus: StatusBus) -> AsyncIterator[BaseEvent]:
     """Yield `events`, interleaving the bus's StatusEvents (as CustomEvents) between them."""
 
-async def agui_event_stream(agent: Any, bus: StatusBus, input_data: dict, *,
-                            require_confirmation: bool = False) -> AsyncIterator[BaseEvent]:
-    """Run `agent` via AgentFrameworkAgent and overlay `bus`'s status. Lazy-imports the extra."""
+async def agui_event_stream(agent: Any, bus: StatusBus, input_data: dict,
+                            **agui_kwargs: Any) -> AsyncIterator[BaseEvent]:
+    """Run `agent` via AgentFrameworkAgent(**agui_kwargs) and overlay `bus`'s status.
+    Lazy-imports the extra; `**agui_kwargs` (e.g. state_schema, predict_state_config,
+    require_confirmation, name, description) pass straight to AgentFrameworkAgent."""
 ```
 
 ```python
 # Harness
-async def agui_stream(self, input_data: dict, tools: list | None = None) -> AsyncIterator[BaseEvent]: ...
+async def agui_stream(self, input_data: dict, *, tools: list | None = None,
+                      **agui_kwargs: Any) -> AsyncIterator[BaseEvent]: ...
 ```
 
 ## The status overlay (the one piece of real engineering)
@@ -138,10 +165,14 @@ without a second event loop or a thread-unsafe hand-off.
     status mid-iteration yields a `harness.status` `CustomEvent` interleaved at the next
     boundary; a status emitted **from a worker thread** still appears (exercises the
     `call_soon_threadsafe` bridge); unsubscribes on exit.
-- **Gated live test** (`HARNESS_LIVE_AGUI=1`, real model + key; skipped by default like the
-  other `HARNESS_LIVE*` tests): `Harness.agui_stream` on a tool-using prompt yields a sequence
-  containing `RunStartedEvent` … `RunFinishedEvent`, at least one `ToolCall*` event, and at
-  least one `harness.status` `CustomEvent`.
+- **Gated live tests** (`HARNESS_LIVE_AGUI=1`, real model + key; skipped by default like the
+  other `HARNESS_LIVE*` tests):
+  - `Harness.agui_stream` on a tool-using prompt (built-in `run_python`) yields a sequence
+    containing `RunStartedEvent` … `RunFinishedEvent`, at least one `ToolCall*` event, and at
+    least one `harness.status` `CustomEvent`.
+  - **Frontend-tool passthrough:** a tool defined only in `input_data["tools"]` (not registered
+    in the harness) is *called by the agent* (a `ToolCallStartEvent` with that tool's name) —
+    locking in the proven request-tool merge so a future regression is caught.
 - The example server is manually runnable; not part of CI.
 
 ## Corrections to prior specs (separate cleanup, not built here)
