@@ -74,6 +74,27 @@ class Harness:
                 error=error,
             )
 
+    async def agui_stream(self, input_data: dict, *, tools: list | None = None,
+                          **agui_kwargs: Any):
+        """Yield AG-UI events for one request (messages/state/tools in ``input_data``).
+
+        Streams the agent's text + tool calls (via the official AG-UI converter) with the
+        harness's StatusBus overlaid as ``harness.status`` CustomEvents. ``**agui_kwargs`` pass
+        to ``AgentFrameworkAgent`` (e.g. ``state_schema``, ``require_confirmation``). Requires
+        the ``agui`` extra.
+        """
+        from .agui import agui_event_stream
+
+        async with Session.create(self.config) as session:
+            agent = await session.create_agent(
+                self._make_client(),
+                agent_instructions=None,
+                tools=self._tools + (tools or []),
+                bundles=self._bundles,
+            )
+            async for event in agui_event_stream(agent, session.status_bus, input_data, **agui_kwargs):
+                yield event
+
     def solve(self, problem: str, tools: list | None = None, *,
               on_status: _StatusSink | None = None) -> Result:
         return asyncio.run(self.asolve(problem, tools=tools, on_status=on_status))

@@ -1,5 +1,6 @@
 import asyncio
 import importlib.util
+import sys
 import threading
 
 import pytest
@@ -111,3 +112,17 @@ def test_status_to_agui_maps_fields():
     ev = status_to_agui(StatusEvent(tool="run_python", message="running", current=1, total=3))
     assert ev.name == "harness.status"
     assert ev.value == {"tool": "run_python", "message": "running", "current": 1, "total": 3}
+
+
+def test_agui_event_stream_errors_clearly_without_the_extra(monkeypatch):
+    # Simulate the extra being absent even though it's installed in this env.
+    monkeypatch.setitem(sys.modules, "agent_framework_ag_ui", None)
+    from harness.agui import agui_event_stream
+    from harness.status import StatusBus
+
+    async def run():
+        gen = agui_event_stream(object(), StatusBus(), {"messages": []})
+        await gen.__anext__()
+
+    with pytest.raises(RuntimeError, match="install the 'agui' extra"):
+        asyncio.run(run())
