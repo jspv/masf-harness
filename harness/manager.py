@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from .conversation import Conversation
+from .paths import safe_path
 
 
 class ConversationStore(Protocol):
@@ -42,9 +43,17 @@ class InMemoryConversationStore:
 
 
 def _conv_root(config: Any, conv_id: str) -> Path:
-    """Isolated per-conversation root. Uses config.root_dir as a base, else ./.harness/sessions."""
+    """Isolated per-conversation root. Uses config.root_dir as a base, else ./.harness/sessions.
+
+    ``conv_id`` may be untrusted (e.g. an AG-UI ``threadId``). It must name a *single* child of the
+    base — a separator or ``..`` would let it nest under another conversation or escape the base
+    entirely, and on close it would be ``rmtree``'d (see ``Conversation.aclose``). We reject
+    separators up front and run the result through ``safe_path`` as a containment backstop.
+    """
     base = Path(config.root_dir) if config.root_dir else (Path.cwd() / ".harness" / "sessions")
-    return base / conv_id
+    if conv_id in ("", ".", "..") or "/" in conv_id or "\\" in conv_id:
+        raise ValueError(f"invalid conversation id (no path separators allowed): {conv_id!r}")
+    return safe_path(base, conv_id)
 
 
 class SessionManager:
@@ -60,7 +69,13 @@ class SessionManager:
 
     async def aopen(self, session_id: str | None = None, *, tools: list | None = None,
                     bundles: tuple[str, ...] | None = None) -> Conversation:
-        """Reuse the live conversation for ``session_id`` (if any, not expired), else create one."""
+        """Reuse the live conversation for ``session_id`` (if any, not expired), else create one.
+
+        Open-or-create is serialized behind a single manager lock so a concurrent ``aopen`` of the
+        same id returns the same Conversation rather than racing two builds. The lock is held across
+        ``Conversation.acreate`` (which connects MCP), so a slow connect for one id delays other
+        opens — acceptable at v1's scale; a per-id lock is the fast-follow if it bites.
+        """
         async with self._lock:
             if session_id is not None:
                 existing = self._store.get(session_id)
@@ -82,6 +97,12 @@ class SessionManager:
             return conv
 
     def get(self, session_id: str) -> Conversation | None:
+        """Live conversation for ``session_id``, or None if absent/expired.
+
+        Lazily *hides* an expired conversation but does not reap it — reaping happens on the next
+        ``aopen`` of that id or in ``sweep``. A host that never re-opens expired ids must call
+        ``sweep`` on a cadence to bound disk/MCP-connection use.
+        """
         conv = self._store.get(session_id)
         if conv is None or self._expired(conv):
             return None

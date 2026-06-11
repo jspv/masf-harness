@@ -1,5 +1,7 @@
 import asyncio
 
+import pytest
+
 from harness import HarnessConfig, Harness
 from harness.manager import SessionManager
 from harness.testing import StubChatClient, text
@@ -43,6 +45,20 @@ def test_lazy_ttl_expiry(tmp_path):
         assert m.get("t1") is None        # lazy expiry on get
         c2 = await m.aopen("t1")          # open re-creates a fresh conversation
         assert c2 is not c1
+        await m.aclose()
+
+    asyncio.run(run())
+
+
+def test_open_rejects_path_traversal_id(tmp_path):
+    # An untrusted threadId must not escape the base via separators/.. — it would be rmtree'd on
+    # close. The open fails closed (ValueError) before any workspace is created.
+    async def run():
+        m = SessionManager(_harness(tmp_path))
+        for bad in ("../../../etc/evil", "a/b", "..", r"a\b"):
+            with pytest.raises(ValueError):
+                await m.aopen(bad)
+        assert m.get("../../../etc/evil") is None        # nothing was registered
         await m.aclose()
 
     asyncio.run(run())
