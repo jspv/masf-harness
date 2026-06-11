@@ -63,7 +63,7 @@ Flags:
 |---|---|---|
 | `--model` | `gpt-5-mini` | Model name (any provider via the MAF OpenAI client) |
 | `--root` | a fresh session dir | Workspace root (the confinement boundary) |
-| `-v`, `--verbose` | off | Print each tool call (and `run_python` code) as it happens |
+| `-v`, `--verbose` | off | Print live tool status to stderr as the task runs (see [Live status updates](#live-status-updates)) |
 
 The CLI prints the answer and leaves `[session: …]` — the directory holding every script, handle, and artifact for inspection.
 
