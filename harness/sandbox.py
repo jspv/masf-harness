@@ -45,7 +45,35 @@ class SandboxExecutor(Protocol):
     def run_code(self, code: str, args: list[str] | None = None) -> ExecResult: ...
 
 
-class LocalSubprocessSandbox:
+@dataclass
+class _LaunchResult:
+    """What a backend's _launch returns: raw process outcome, pre-parse."""
+    stdout: str
+    stderr: str
+    exit_code: int
+    killed_by: str | None = None
+
+
+@dataclass
+class _RunContext:
+    """Everything a backend needs to launch one run. Control-file paths are HOST paths
+    (the parent reads/writes them); a backend translates them to its own namespace."""
+    script_rel: str          # user script path relative to root
+    argv: list[str]          # user args (already str-coerced)
+    root: Path
+    registry_file: Path      # host path
+    new_handles_file: Path   # host path
+    emit_file: Path          # host path
+    config: SandboxConfig
+
+
+class _OrchestratedSandbox:
+    """Shared control-file orchestration. Subclasses implement ``_launch``.
+
+    Sequential and NOT re-entrant per root: each run uses per-run-unique control files
+    (keyed by pid + run counter), so sequential runs never clobber each other.
+    """
+
     def __init__(self, root: Path | str, store: HandleStore,
                  config: SandboxConfig | None = None) -> None:
         self.root = Path(root).resolve()
@@ -56,7 +84,6 @@ class LocalSubprocessSandbox:
     def run_code(self, code: str, args: list[str] | None = None) -> ExecResult:
         scripts = self.root / _SCRIPTS_DIR
         scripts.mkdir(exist_ok=True)
-        # Collision-free across instances/processes; scripts persist as debuggable artifacts.
         fd, abspath = tempfile.mkstemp(prefix="inline_", suffix=".py", dir=scripts)
         os.close(fd)
         Path(abspath).write_text(code, encoding="utf-8")
@@ -65,7 +92,7 @@ class LocalSubprocessSandbox:
 
     def run_script(self, path: str, args: list[str] | None = None) -> ExecResult:
         script = safe_path(self.root, path)  # raises PathEscapesRootError if outside
-        argv = [str(a) for a in (args or [])]  # coerce so non-str args fail clearly, not opaquely
+        argv = [str(a) for a in (args or [])]
 
         self._run_counter += 1
         token = f"{os.getpid()}_{self._run_counter}"
@@ -79,63 +106,37 @@ class LocalSubprocessSandbox:
                         for hid, h in self.store.manifest_handles().items()}
             registry_file.write_text(json.dumps(registry), encoding="utf-8")
 
-            env = {
-                "PATH": _minimal_path(),
-                "HOME": str(self.root),    # keep ~/-relative scratch inside the root
-                "TMPDIR": str(self.root),
-                "HARNESS_ROOT": str(self.root),
-                "HARNESS_REGISTRY": str(registry_file),
-                "HARNESS_NEW_HANDLES": str(new_handles_file),
-                "HARNESS_EMIT": str(emit_file),
-                "PYTHONPATH": str(_RUNTIME_DIR),
-            }
+            ctx = _RunContext(
+                script_rel=str(script.relative_to(self.root)), argv=argv, root=self.root,
+                registry_file=registry_file, new_handles_file=new_handles_file,
+                emit_file=emit_file, config=self.config,
+            )
+            launched = self._launch(ctx)
 
-            killed_by = None
-            try:
-                # Run via _runner so a bare last expression is auto-captured as the result.
-                proc = subprocess.run(
-                    [sys.executable, str(_RUNNER), str(script), *argv],
-                    cwd=self.root, env=env, capture_output=True, text=True,
-                    timeout=self.config.timeout_s, preexec_fn=self._limits(),
-                )
-                stdout, stderr, exit_code = proc.stdout, proc.stderr, proc.returncode
-            except subprocess.TimeoutExpired as e:
-                killed_by = "timeout"
-                stdout = _as_text(e.stdout)
-                stderr = _as_text(e.stderr) + "\nharness: killed (timeout)"
-                exit_code = -1
-
-            # Read the emit payload defensively: a misbehaving script must yield an
-            # ExecResult, never make run_script raise.
             result = None
             emit_error = None
-            if exit_code == 0 and emit_file.exists():
+            if launched.exit_code == 0 and emit_file.exists():
                 try:
                     result = json.loads(emit_file.read_text(encoding="utf-8"))
                 except json.JSONDecodeError as e:
                     emit_error = f"harness: malformed emit payload: {e}"
 
-            # Ergonomic fallback: if the script neither emitted nor ended in an
-            # expression but printed something, surface that as the result so a model
-            # that just print()s an answer still gets one back.
-            if result is None and emit_error is None and exit_code == 0 and stdout.strip():
-                result = stdout.strip()
+            if (result is None and emit_error is None and launched.exit_code == 0
+                    and launched.stdout.strip()):
+                result = launched.stdout.strip()
 
             new_handles = self._ingest_new_handles(new_handles_file)
-
-            base_error = (stderr.strip() or None) if exit_code != 0 else None
+            base_error = (launched.stderr.strip() or None) if launched.exit_code != 0 else None
             error = "\n".join(p for p in (base_error, emit_error) if p) or None
 
-            return ExecResult(stdout=stdout, stderr=stderr, result=result, error=error,
-                              exit_code=exit_code, new_handles=new_handles,
-                              killed_by=killed_by)
+            return ExecResult(stdout=launched.stdout, stderr=launched.stderr, result=result,
+                              error=error, exit_code=launched.exit_code,
+                              new_handles=new_handles, killed_by=launched.killed_by)
         finally:
             for f in (new_handles_file, emit_file, registry_file):
                 f.unlink(missing_ok=True)
 
     def _ingest_new_handles(self, new_handles_file: Path) -> list[str]:
-        """Register handles the child wrote. Tolerant: a corrupt line is skipped, not
-        fatal, so one bad record can't abort ingestion or leave the store inconsistent."""
         ids: list[str] = []
         if not new_handles_file.exists():
             return ids
@@ -151,6 +152,37 @@ class LocalSubprocessSandbox:
                 continue
         return ids
 
+    def _launch(self, ctx: _RunContext) -> _LaunchResult:
+        raise NotImplementedError
+
+
+class LocalSubprocessSandbox(_OrchestratedSandbox):
+    """Runs the script in a scrubbed-env child process with rlimits + a wall-clock timeout."""
+
+    def _launch(self, ctx: _RunContext) -> _LaunchResult:
+        script_abs = ctx.root / ctx.script_rel
+        env = {
+            "PATH": _minimal_path(),
+            "HOME": str(ctx.root),
+            "TMPDIR": str(ctx.root),
+            "HARNESS_ROOT": str(ctx.root),
+            "HARNESS_REGISTRY": str(ctx.registry_file),
+            "HARNESS_NEW_HANDLES": str(ctx.new_handles_file),
+            "HARNESS_EMIT": str(ctx.emit_file),
+            "PYTHONPATH": str(_RUNTIME_DIR),
+        }
+        try:
+            proc = subprocess.run(
+                [sys.executable, str(_RUNNER), str(script_abs), *ctx.argv],
+                cwd=ctx.root, env=env, capture_output=True, text=True,
+                timeout=ctx.config.timeout_s, preexec_fn=self._limits(),
+            )
+            return _LaunchResult(proc.stdout, proc.stderr, proc.returncode)
+        except subprocess.TimeoutExpired as e:
+            return _LaunchResult(_as_text(e.stdout),
+                                 _as_text(e.stderr) + "\nharness: killed (timeout)",
+                                 -1, killed_by="timeout")
+
     def _limits(self):
         cfg = self.config
 
@@ -158,7 +190,7 @@ class LocalSubprocessSandbox:
             mem = cfg.max_memory_mb * 1024 * 1024
             fsize = cfg.max_file_size_mb * 1024 * 1024
             for res_id, limit in (
-                (resource.RLIMIT_AS, mem),      # may be rejected on macOS — best-effort
+                (resource.RLIMIT_AS, mem),
                 (resource.RLIMIT_FSIZE, fsize),
                 (resource.RLIMIT_CORE, 0),
             ):
