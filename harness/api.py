@@ -5,11 +5,14 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, AsyncIterator, Callable
+from typing import TYPE_CHECKING, Any, AsyncIterator, Callable
 
 from .config import HarnessConfig
 from .session import Session
 from .status import StatusEvent
+
+if TYPE_CHECKING:
+    from .conversation import Conversation
 
 _StatusSink = Callable[[StatusEvent], None]
 
@@ -55,8 +58,14 @@ class Harness:
             self._manager = SessionManager(self, idle_ttl_s=self.config.idle_ttl_s)
         return self._manager
 
-    async def aopen(self, session_id: str | None = None, *, tools: list | None = None):
-        """Open (or resume) a persistent continuous Conversation by id."""
+    async def aopen(self, session_id: str | None = None, *,
+                    tools: list | None = None) -> Conversation:
+        """Open (or resume) a persistent continuous Conversation by id.
+
+        Lazy manager init is single-event-loop safe (the None-check/assign has no ``await``); it is
+        not safe to first-touch ``aopen`` from multiple OS threads — drive continuous sessions from
+        one loop, the v1 contract for both AG-UI and the async terminal loop.
+        """
         return await self._sessions().aopen(session_id, tools=tools)
 
     async def aclose_sessions(self) -> None:
@@ -71,6 +80,14 @@ class Harness:
 
     async def asolve(self, problem: str, tools: list | None = None, *,
                      on_status: _StatusSink | None = None, keep: bool = False) -> Result:
+        """Run one ephemeral one-shot: open a Conversation, ask, reap the workspace (unless ``keep``).
+
+        The one-shot uses ``config.root_dir`` verbatim. With ``root_dir=None`` each call gets its own
+        auto-allocated dir, so parallel ``solve``/``asolve`` calls are isolated. With a **pinned**
+        ``root_dir`` they share that dir — and since the default reaps it on completion, concurrent
+        one-shots on the same pinned root are unsafe (the first to finish deletes it mid-run). For
+        concurrent one-shots either leave ``root_dir`` unset or use a separate Harness per call.
+        """
         from .conversation import Conversation
 
         sink = on_status if on_status is not None else self._on_status
