@@ -74,10 +74,13 @@ def ensure_layer(runtime: str, config: SandboxConfig, base: Path | None = None,
                  run: Callable = subprocess.run) -> Path:
     """Provision ``config.pip_packages`` into a mounted layer (network ON, provisioning only).
 
-    Cached by package set; provisions once. Returns the host layer dir.
+    Cached by package set; provisions once. A sibling ``<dir>.complete`` sentinel marks success,
+    so a crashed/partial provision is re-run rather than served as a broken layer. Returns the
+    host layer dir.
     """
     target = layer_dir(config, base)
-    if target.exists() and any(target.iterdir()):
+    sentinel = target.parent / f"{target.name}.complete"
+    if sentinel.exists():
         return target
     target.mkdir(parents=True, exist_ok=True)
     tag = image_tag(config.preinstalled)
@@ -88,4 +91,5 @@ def ensure_layer(runtime: str, config: SandboxConfig, base: Path | None = None,
     proc = run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:
         raise RuntimeError(f"failed to provision pip_packages into {target}:\n{proc.stderr}")
+    sentinel.write_text("ok", encoding="utf-8")   # only after a successful install
     return target

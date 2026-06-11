@@ -4,6 +4,7 @@ from harness.config import SandboxConfig
 from harness.container_runtime import (
     detect_runtime,
     ensure_image,
+    ensure_layer,
     image_tag,
     layer_dir,
 )
@@ -70,3 +71,37 @@ def test_ensure_image_skips_build_when_present():
         return _Proc()
 
     ensure_image("podman", "harness-sandbox:abc", SandboxConfig(), run=fake_run)
+
+
+def test_ensure_layer_provisions_once_then_serves_from_sentinel(tmp_path):
+    calls = []
+
+    class _Proc:
+        returncode, stdout, stderr = 0, "", ""   # image present + pip install succeed
+
+    def fake_run(argv, **kw):
+        calls.append(argv)
+        return _Proc()
+
+    cfg = SandboxConfig(pip_packages=("six",))
+    first = ensure_layer("podman", cfg, base=tmp_path, run=fake_run)
+    assert any("pip" in a for a in calls)               # provisioned (pip install ran)
+    n = len(calls)
+    second = ensure_layer("podman", cfg, base=tmp_path, run=fake_run)
+    assert second == first
+    assert len(calls) == n                              # sentinel hit -> nothing re-run
+
+
+def test_ensure_layer_reprovisions_if_sentinel_missing(tmp_path):
+    # A non-empty but incomplete dir (provision crashed) must NOT be served as cached.
+    cfg = SandboxConfig(pip_packages=("six",))
+    target = layer_dir(cfg, base=tmp_path)
+    target.mkdir(parents=True)
+    (target / "partial").write_text("x")                # non-empty, but no .complete sentinel
+    calls = []
+
+    class _Proc:
+        returncode, stdout, stderr = 0, "", ""
+
+    ensure_layer("podman", cfg, base=tmp_path, run=lambda a, **k: calls.append(a) or _Proc())
+    assert any("pip" in a for a in calls)               # re-provisioned despite non-empty dir
