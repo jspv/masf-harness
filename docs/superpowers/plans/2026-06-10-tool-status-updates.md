@@ -4,7 +4,7 @@
 
 **Goal:** Let tools emit lightweight status/progress updates during execution that the harness observes (and can forward to a UI), via a harness-owned side-band channel.
 
-**Architecture:** A `contextvars`-backed producer (`report_progress()`) feeds a thread-safe `StatusBus` that the `Session` owns and binds for the duration of a run; subscribers (`Harness(on_status=…)`, the CLI `--verbose` printer) receive `StatusEvent`s live. No MAF stream is involved — the harness agent is non-streaming, so this channel is entirely ours. (Spec: `docs/superpowers/specs/2026-06-10-tool-status-updates-design.md`.)
+**Architecture:** A `contextvars`-backed producer (`report_progress()`) feeds a thread-safe `StatusBus` that the `Session` owns and binds for the duration of a run; subscribers (`Harness(on_status=…)`, the CLI `--verbose` printer) receive `StatusEvent`s live. It's a side-band channel: mid-tool and MCP progress aren't part of MAF's response stream, so the harness delivers them itself. (Spec: `docs/superpowers/specs/2026-06-10-tool-status-updates-design.md`.)
 
 **Tech Stack:** Python 3.12 stdlib (`contextvars`, `threading`, `dataclasses`), Microsoft Agent Framework 1.8.1, pytest. The `agent-framework` 1.8.1 bump is already committed on this branch.
 
@@ -132,8 +132,9 @@ A tool calls ``report_progress(...)`` while it runs; the call routes through a
 ``contextvars`` lookup to the ``StatusBus`` the active ``Session`` bound for this run, which
 fans the event out to subscribers (e.g. a ``Harness(on_status=...)`` callback or the CLI
 ``--verbose`` printer). Outside a bound run, ``report_progress`` is a no-op, so tools can
-call it unconditionally. The harness agent is non-streaming, so this is entirely our own
-channel -- no MAF stream is involved.
+call it unconditionally. This is a side-band channel: mid-tool and MCP progress are not part
+of MAF's response stream (which carries text deltas and tool-call lifecycle), so the harness
+delivers them itself.
 """
 
 from __future__ import annotations

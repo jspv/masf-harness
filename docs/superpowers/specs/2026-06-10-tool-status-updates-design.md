@@ -14,9 +14,10 @@
 This feature also bumps `agent-framework-core`/`-openai` to **1.8.1** (from 1.7.0). A spike,
 re-verified against 1.8.1, established:
 
-- **The harness agent is non-streaming.** `create_harness_agent` returns an `Agent` whose
-  only public run method is `.run()` — there is no `run_stream`. There is no MAF event
-  stream to inject tool-originated events into on our path.
+- **Mid-tool status is not part of MAF's response stream.** The agent's stream
+  (`run(stream=True)`) carries text deltas and tool-call lifecycle (start / args / result),
+  not a tool's *mid-execution* progress — so a tool reporting "3/10 done" while it runs has
+  no place to ride.
 - **MAF exposes no tool-side emit hook.** `FunctionInvocationContext` carries only
   `{function, arguments, kwargs, metadata, result, session}`; `AgentSession` carries only
   `{session_id, to_dict}`. Neither can push an update into a run.
@@ -28,10 +29,10 @@ re-verified against 1.8.1, established:
   offloaded to a worker thread (Python copies the context into the thread) — with no MAF
   coupling.
 
-**Conclusion:** the status channel must be **harness-owned and out-of-band** (not riding a
-MAF stream, which does not exist for our agent). Any future UI — including
-`agent-framework-ag-ui`, which itself expects a streaming agent — becomes a *subscriber* to
-this channel, not the other way around.
+**Conclusion:** the status channel is **harness-owned and out-of-band** — it carries the
+mid-execution progress MAF's response stream doesn't. A UI (including `agent-framework-ag-ui`)
+consumes it as a *subscriber*, overlaying these status events onto the agent's own event
+stream.
 
 ## Scope
 

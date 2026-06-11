@@ -11,8 +11,7 @@
 ## Spike findings (the design rests on these, all verified on the installed stack)
 
 - **The harness agent streams.** `agent.run(prompt, stream=True)` returns a `ResponseStream`
-  of `AgentResponseUpdate`s (verified: 17 incremental updates, token-streamed text). (This
-  corrects the Phase-1 spike's "non-streaming" claim — see "Corrections" below.)
+  of `AgentResponseUpdate`s (verified: 17 incremental updates, token-streamed text).
 - **The official `agent-framework-ag-ui` already maps MAF → AG-UI, completely.**
   `AgentFrameworkAgent(agent, require_confirmation=False).run(input_data)` is a public async
   generator that internally calls `agent.run(messages, stream=True, …)` and yields AG-UI
@@ -174,12 +173,3 @@ without a second event loop or a thread-unsafe hand-off.
     in the harness) is *called by the agent* (a `ToolCallStartEvent` with that tool's name) —
     locking in the proven request-tool merge so a future regression is caught.
 - The example server is manually runnable; not part of CI.
-
-## Corrections to prior specs (separate cleanup, not built here)
-
-The Phase-1 and Phase-2 specs state the harness agent is non-streaming and use that to justify
-the side-band `StatusBus`. The agent **does** stream (`run(stream=True)`). The side-band bus is
-still correct, but for the accurate reason: **mid-tool and MCP progress are not part of MAF's
-response stream** (which carries text deltas + tool-call lifecycle, not mid-execution custom
-progress). Those two specs' "research findings" should be corrected to say so. Tracked as a
-docs follow-up, independent of this implementation.
