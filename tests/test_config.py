@@ -15,6 +15,16 @@ def test_defaults_are_sensible():
     assert cfg.documents.ocr is False        # OCR off by default (born-digital docs)
 
 
+def test_sandbox_backend_defaults_and_container_fields():
+    cfg = HarnessConfig()
+    assert cfg.sandbox.backend == "local"            # default backend
+    assert cfg.sandbox.network is False              # network off by default
+    assert cfg.sandbox.pip_packages == ()
+    assert cfg.sandbox.container_runtime is None      # auto-detect
+    assert cfg.sandbox.max_cpus == 2.0
+    assert not hasattr(cfg.sandbox, "confine_os")     # removed
+
+
 def test_nested_configs_are_independent_between_instances():
     a = HarnessConfig()
     b = HarnessConfig()

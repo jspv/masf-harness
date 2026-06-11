@@ -4,14 +4,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Literal
 
 
 @dataclass
 class SandboxConfig:
     timeout_s: float = 30.0
     max_memory_mb: int = 1024
-    max_file_size_mb: int = 512
-    confine_os: bool = False  # opt-in OS-level jail (sandbox-exec / bwrap); Phase 2+
+    max_file_size_mb: int = 512        # enforced by the local tier only (no container equivalent)
+    backend: Literal["local", "container"] = "local"
+    container_runtime: str | None = None   # None -> auto-detect podman, then docker
+    network: bool = False                  # sandbox network off by default; opt-in to enable
+    pip_packages: tuple[str, ...] = ()     # provisioned into a mounted layer (network only there)
+    max_cpus: float = 2.0
     preinstalled: tuple[str, ...] = ("pandas", "pyarrow", "numpy", "httpx")
 
 

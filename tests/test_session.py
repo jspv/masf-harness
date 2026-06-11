@@ -113,6 +113,23 @@ def test_report_progress_is_noop_outside_async_context(tmp_path):
     assert got == []
 
 
+def test_session_selects_container_backend(tmp_path, monkeypatch):
+    from harness.config import HarnessConfig, SandboxConfig
+    from harness.sandbox import LocalSubprocessSandbox
+    from harness.sandbox_container import ContainerSandbox
+
+    # default -> local
+    s_local = Session.create(HarnessConfig(root_dir=tmp_path / "a"))
+    assert isinstance(s_local.sandbox, LocalSubprocessSandbox)
+
+    # backend="container" -> ContainerSandbox (patch detect_runtime so no podman/docker needed)
+    import harness.container_runtime as cr
+    monkeypatch.setattr(cr, "detect_runtime", lambda override, **kw: "podman")
+    cfg = HarnessConfig(root_dir=tmp_path / "b", sandbox=SandboxConfig(backend="container"))
+    s_cont = Session.create(cfg)
+    assert isinstance(s_cont.sandbox, ContainerSandbox)
+
+
 def test_session_unbinds_bus_on_exit(tmp_path):
     from harness.status import current_bus
 

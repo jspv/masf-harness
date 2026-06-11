@@ -207,9 +207,30 @@ The loop follows the **search → read → analyze** triad: `search` to locate, 
 Every session has one **root directory**; everything — handles, agent-written scripts, reads/writes, the sandbox `cwd` — lives under it.
 
 - **Layer 1 — Tool path-jail (guaranteed).** All model-supplied paths route through one chokepoint, `safe_path(root, p)`, which resolves symlinks *before* checking and rejects any path outside the root (blocks `..`, absolute paths, symlink escapes). It's the most heavily tested code in the project.
-- **Layer 2 — Executed code (best-effort at the local tier).** `run_python` runs in a subprocess with `cwd=root`, a scrubbed environment, `resource` rlimits (CPU, memory, file size) and a wall-clock timeout. An **optional** OS jail (`sandbox-exec` on macOS, `bwrap`/`firejail` on Linux) is available via `SandboxConfig.confine_os`.
+- **Layer 2 — Executed code.** On the default `local` tier, `run_python` runs in a subprocess with `cwd=root`, a scrubbed environment, `resource` rlimits (CPU, memory, file size) and a wall-clock timeout (best-effort isolation). For real isolation, switch to the `container` tier — see [Sandbox tiers](#sandbox-tiers).
 
-> ⚠️ At the local tier, isolation of *arbitrary executed code* is best-effort. Airtight isolation arrives when the sandbox tier moves to a container/micro-VM — and because everything sits behind the `SandboxExecutor` interface, that swap changes zero harness code.
+> The **container tier** provides real isolation: set `HarnessConfig.sandbox.backend = "container"` to run `run_python` in a hardened Podman/Docker container — network off by default, read-only root filesystem, dropped capabilities, non-root, and memory/cpu/pid limits — behind the same `SandboxExecutor` interface (no other harness code changes). See [Sandbox tiers](#sandbox-tiers).
+
+### Sandbox tiers
+
+`run_python` executes model-authored code; two backends are chosen by `HarnessConfig.sandbox.backend`.
+
+- **`local`** (default) — a scrubbed-env subprocess with `resource` rlimits, a wall-clock timeout, and the path-jail. Fast, no dependencies; best-effort isolation.
+- **`container`** — runs the code in a hardened OCI container (Podman preferred, Docker supported; auto-detected). Network **off by default**, read-only root filesystem, `--cap-drop ALL`, non-root, and memory/cpu/pid limits. The session root is bind-mounted to `/workspace`, so handles round-trip exactly as in the local tier.
+
+```python
+from harness import Harness, HarnessConfig
+from harness.config import SandboxConfig
+
+cfg = HarnessConfig(sandbox=SandboxConfig(
+    backend="container",
+    network=False,                 # opt-in with True if sandbox code must reach the network
+    pip_packages=("rich",),        # provisioned into a mounted layer (network only during provisioning)
+))
+Harness(cfg).solve("…")
+```
+
+The image (Python + `preinstalled` libraries) is **built automatically on first use** and cached; run `harness-build-sandbox` to pre-build it in CI/deploy. Notes: on macOS the runtime runs in a Linux VM, so the session root must sit under a VM-shared path (the default `~/.harness/...` is); the container tier does not enforce `max_file_size_mb` (memory/pid/cpu/network are enforced instead).
 
 ## Configuration
 
@@ -223,7 +244,7 @@ Every session has one **root directory**; everything — handles, agent-written 
 | `max_context_window_tokens` | `128_000` | Fed to MAF compaction |
 | `max_output_tokens` | `4096` | |
 | `root_dir` | `None` | `None` → a session dir under `./.harness/sessions/` |
-| `sandbox` | `SandboxConfig()` | timeout, rlimits, `confine_os`, preinstalled libs |
+| `sandbox` | `SandboxConfig()` | `backend` (local/container), timeout, limits, network, `pip_packages`, preinstalled libs |
 | `fetch` | `FetchConfig()` | `max_bytes`, timeout, allowed URL schemes |
 | `search` | `SearchConfig()` | Tavily provider, key, `max_results` |
 | `documents` | `DocumentConfig()` | Docling ingestion: `ocr` (off by default) |
@@ -245,6 +266,8 @@ harness/
   paths.py       safe_path() — the single security chokepoint
   handles.py     Handle + HandleStore (json / text / dataframe persistence)
   sandbox.py     SandboxExecutor protocol + LocalSubprocessSandbox
+  sandbox_container.py  hardened OCI-container backend (podman/docker)
+  container_runtime.py  runtime detection, image build, package layer
   session.py     Session — root dir + store + sandbox for one run
   spill.py       large/structured tool & MCP returns → handles (MAF result_parser)
   agui.py        AG-UI event stream (status overlay over agent-framework-ag-ui)
@@ -260,11 +283,11 @@ tests/             mirror of the package (unit + integration + security tests)
 
 ## Status & roadmap
 
-Implemented: foundation (handles, sandbox, path-jail), the agent loop + tool surface, the `Harness`/`solve()` API + CLI, web research (Tavily search/extract, Markdown fetch), **document ingestion** (`read_document` via Docling — PDF/spreadsheet → Markdown with tables), **live status updates** (built-in, developer, and MCP tools → an `on_status` feed / `--verbose`), and an **AG-UI / CopilotKit** integration (`Harness.agui_stream`).
+Implemented: foundation (handles, sandbox, path-jail), the agent loop + tool surface, the `Harness`/`solve()` API + CLI, web research (Tavily search/extract, Markdown fetch), **document ingestion** (`read_document` via Docling — PDF/spreadsheet → Markdown with tables), **live status updates** (built-in, developer, and MCP tools → an `on_status` feed / `--verbose`), and an **AG-UI / CopilotKit** integration (`Harness.agui_stream`), and a **container sandbox tier** (hardened Podman/Docker isolation behind `SandboxExecutor`).
 
 Planned (documented under `docs/superpowers/`):
 
-- **Container / micro-VM sandbox tier** — airtight code isolation behind the existing `SandboxExecutor` interface.
+- **Micro-VM sandbox tier** — gVisor / Firecracker, behind the same `SandboxExecutor` interface.
 - **MAF skills + memory providers** (v1.1) and a MAF Workflow durability / HITL outer shell.
 
 Out of scope for now: headless-browser/JS rendering, a full search-provider abstraction, and alternative document backends.
