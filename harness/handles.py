@@ -157,7 +157,12 @@ class HandleStore:
         return self.dir / "_manifest.json"
 
     def _save_manifest(self) -> None:
-        """Persist {id: summary} atomically so a new HandleStore on this root can rehydrate."""
+        """Persist {id: summary} atomically so a new HandleStore on this root can rehydrate.
+
+        Rewrites the whole manifest on every put/register -- fine at handle frequency (handles are
+        coarse), and the atomic tmp+replace is worth it. Summaries drop None fields, which
+        re-default on ``Handle(**record)`` load, so the round-trip is lossless.
+        """
         tmp = self.dir / "_manifest.json.tmp"
         tmp.write_text(json.dumps(self.manifest()), encoding="utf-8")
         tmp.replace(self._manifest_file)
