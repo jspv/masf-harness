@@ -207,7 +207,7 @@ The loop follows the **search → read → analyze** triad: `search` to locate, 
 Every session has one **root directory**; everything — handles, agent-written scripts, reads/writes, the sandbox `cwd` — lives under it.
 
 - **Layer 1 — Tool path-jail (guaranteed).** All model-supplied paths route through one chokepoint, `safe_path(root, p)`, which resolves symlinks *before* checking and rejects any path outside the root (blocks `..`, absolute paths, symlink escapes). It's the most heavily tested code in the project.
-- **Layer 2 — Executed code (best-effort at the local tier).** `run_python` runs in a subprocess with `cwd=root`, a scrubbed environment, `resource` rlimits (CPU, memory, file size) and a wall-clock timeout. An **optional** OS jail (`sandbox-exec` on macOS, `bwrap`/`firejail` on Linux) is available via `SandboxConfig.confine_os`.
+- **Layer 2 — Executed code.** On the default `local` tier, `run_python` runs in a subprocess with `cwd=root`, a scrubbed environment, `resource` rlimits (CPU, memory, file size) and a wall-clock timeout (best-effort isolation). For real isolation, switch to the `container` tier — see [Sandbox tiers](#sandbox-tiers).
 
 > The **container tier** provides real isolation: set `HarnessConfig.sandbox.backend = "container"` to run `run_python` in a hardened Podman/Docker container — network off by default, read-only root filesystem, dropped capabilities, non-root, and memory/cpu/pid limits — behind the same `SandboxExecutor` interface (no other harness code changes). See [Sandbox tiers](#sandbox-tiers).
 
@@ -244,7 +244,7 @@ The image (Python + `preinstalled` libraries) is **built automatically on first 
 | `max_context_window_tokens` | `128_000` | Fed to MAF compaction |
 | `max_output_tokens` | `4096` | |
 | `root_dir` | `None` | `None` → a session dir under `./.harness/sessions/` |
-| `sandbox` | `SandboxConfig()` | timeout, rlimits, `confine_os`, preinstalled libs |
+| `sandbox` | `SandboxConfig()` | `backend` (local/container), timeout, limits, network, `pip_packages`, preinstalled libs |
 | `fetch` | `FetchConfig()` | `max_bytes`, timeout, allowed URL schemes |
 | `search` | `SearchConfig()` | Tavily provider, key, `max_results` |
 | `documents` | `DocumentConfig()` | Docling ingestion: `ocr` (off by default) |

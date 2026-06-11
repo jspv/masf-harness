@@ -33,7 +33,7 @@ class ContainerSandbox(_OrchestratedSandbox):
         cfg = self.config
         argv = [
             self._runtime, "run", "--rm",
-            "--read-only", "--tmpfs", "/tmp",
+            "--read-only", "--tmpfs", "/tmp:rw,nosuid,nodev",
             "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
             "--pids-limit", str(_PIDS_LIMIT),
             "--memory", f"{cfg.max_memory_mb}m", "--cpus", str(cfg.max_cpus),
