@@ -111,6 +111,12 @@ class Harness:
         from .agui import agui_event_stream
 
         thread_id = input_data.get("threadId") or input_data.get("thread_id")
+        if not thread_id:
+            # The threadId IS the persistence key; without it aopen(None) would mint a fresh,
+            # unreachable Conversation per request (an unbounded leak). Fail loud instead.
+            raise ValueError("agui_stream requires input_data['threadId']")
+        # No single-flight lock here: AG-UI hosts (e.g. CopilotKit) serialize runs per thread, so
+        # one threadId has at most one in-flight request. A non-serializing host would need the lock.
         conv = await self._sessions().aopen(thread_id, tools=tools)
         async for event in agui_event_stream(conv.agent, conv.session.status_bus, input_data,
                                              **agui_kwargs):
