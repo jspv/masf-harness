@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, AsyncIterator, Callable
 
 from .config import HarnessConfig
 from .session import Session
@@ -73,6 +73,28 @@ class Harness:
                 session_dir=session.root,
                 error=error,
             )
+
+    async def agui_stream(self, input_data: dict, *, tools: list | None = None,
+                          **agui_kwargs: Any) -> AsyncIterator[Any]:
+        """Yield AG-UI events for one request (messages/state/tools in ``input_data``).
+
+        Streams the agent's text + tool calls (via the official AG-UI converter) with the
+        harness's StatusBus overlaid as ``harness.status`` CustomEvents. ``input_data`` carries
+        the AG-UI request: ``messages`` (multi-turn history), request-defined frontend ``tools``,
+        and ``state``. ``**agui_kwargs`` pass to ``AgentFrameworkAgent`` (e.g. ``state_schema``,
+        ``require_confirmation``). Requires the ``agui`` extra.
+        """
+        from .agui import agui_event_stream
+
+        async with Session.create(self.config) as session:
+            agent = await session.create_agent(
+                self._make_client(),
+                agent_instructions=None,
+                tools=self._tools + (tools or []),
+                bundles=self._bundles,
+            )
+            async for event in agui_event_stream(agent, session.status_bus, input_data, **agui_kwargs):
+                yield event
 
     def solve(self, problem: str, tools: list | None = None, *,
               on_status: _StatusSink | None = None) -> Result:

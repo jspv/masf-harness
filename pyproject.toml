@@ -16,6 +16,7 @@ dependencies = [
 
 [project.optional-dependencies]
 docling = ["docling>=2.0"]         # heavy + downloads models; opt-in. Enables read_document.
+agui = ["agent-framework-ag-ui>=1.0.0rc4"]
 
 [project.scripts]
 harness = "harness.cli:main"

@@ -63,7 +63,7 @@ Flags:
 |---|---|---|
 | `--model` | `gpt-5-mini` | Model name (any provider via the MAF OpenAI client) |
 | `--root` | a fresh session dir | Workspace root (the confinement boundary) |
-| `-v`, `--verbose` | off | Print each tool call (and `run_python` code) as it happens |
+| `-v`, `--verbose` | off | Print live tool status to stderr as the task runs (see [Live status updates](#live-status-updates)) |
 
 The CLI prints the answer and leaves `[session: …]` — the directory holding every script, handle, and artifact for inspection.
 
@@ -131,6 +131,58 @@ MCP support needs the `mcp` SDK, which is a declared dependency, so `uv sync` al
 
 **On result size.** Spilling is lossless — a large page is preserved whole as a handle, so an MCP server's pagination cursor survives and the agent can fetch the next page. The two ends of the spill-over zone are configurable (`spill_threshold_bytes` … `max_spill_bytes`): a well-behaved server that paginates returns bounded pages that flow through cleanly, while an unbounded dump past `max_spill_bytes` raises `SpillLimitExceeded` rather than silently filling disk — nudging the source toward server-side pagination/filtering.
 
+### Live status updates
+
+Tools report progress while they run, and you receive it through an `on_status` callback — from the built-in tools, from your own tools (via `report_progress`), and from MCP servers (their logging and progress notifications are captured automatically).
+
+```python
+from harness import Harness, report_progress
+
+def crunch(n: int) -> str:
+    """Your tool can report progress."""
+    for i in range(n):
+        report_progress(f"processed {i + 1}/{n}", current=i + 1, total=n, tool="crunch")
+    return "done"
+
+def show(event):
+    bar = f" [{event.current}/{event.total}]" if event.current is not None else ""
+    print(f"→ {event.tool}: {event.message}{bar}")
+
+Harness(tools=[crunch], on_status=show).solve("crunch 5 items")
+```
+
+The CLI exposes the same feed with `-v`/`--verbose` (printed to stderr). MCP-server status needs no extra wiring — a server's `notifications/message` arrive tagged `mcp:<server>`, and its `notifications/progress` arrive tagged with the calling tool's name plus `current`/`total`.
+
+### AG-UI / CopilotKit
+
+A harness run can drive an [AG-UI](https://docs.ag-ui.com/) client such as [CopilotKit](https://docs.copilotkit.ai/) — streamed answer text, live tool-call visibility, and the status feed above — all as AG-UI events. Install the optional extra:
+
+```bash
+uv sync --prerelease=allow --extra agui
+```
+
+`Harness.agui_stream(input_data)` yields AG-UI events for one request; encode them as SSE from your endpoint:
+
+```python
+from ag_ui.encoder import EventEncoder
+from fastapi import FastAPI, Request
+from fastapi.responses import StreamingResponse
+from harness import Harness
+
+app, harness = FastAPI(), Harness()
+
+@app.post("/agent")
+async def agent(request: Request):
+    input_data = await request.json()                 # AG-UI RunAgentInput
+    encoder = EventEncoder()
+    async def sse():
+        async for event in harness.agui_stream(input_data):
+            yield encoder.encode(event)
+    return StreamingResponse(sse(), media_type="text/event-stream")
+```
+
+Point your AG-UI client at this endpoint. The harness reuses the official `agent-framework-ag-ui` converter, so **frontend/generative-UI tools** (defined in the request), **shared state** (`state_schema`/`predict_state_config`, forwarded as keyword args to `agui_stream`), **human-in-the-loop**, and **multi-turn history** all work — with the harness's own progress feed overlaid as `harness.status` `CUSTOM` events. A runnable version is in `examples/agui_server.py`.
+
 ## Tool surface
 
 The agent gets nine root-confined tools. Domain data sources are *your* tools/MCP servers, auto-handled by spill.
@@ -195,6 +247,7 @@ harness/
   sandbox.py     SandboxExecutor protocol + LocalSubprocessSandbox
   session.py     Session — root dir + store + sandbox for one run
   spill.py       large/structured tool & MCP returns → handles (MAF result_parser)
+  agui.py        AG-UI event stream (status overlay over agent-framework-ag-ui)
   bundles.py     capability bundles (code / files / web) + their instructions
   tools/         the agent's tools (files, search, fetch, code, inspect, web)
   runtime/       in-sandbox helpers (load/save/emit)
@@ -207,7 +260,7 @@ tests/             mirror of the package (unit + integration + security tests)
 
 ## Status & roadmap
 
-Implemented: foundation (handles, sandbox, path-jail), the agent loop + tool surface, the `Harness`/`solve()` API + CLI, web research (Tavily search/extract, Markdown fetch), and **document ingestion** (`read_document` via Docling — PDF/spreadsheet → Markdown with tables).
+Implemented: foundation (handles, sandbox, path-jail), the agent loop + tool surface, the `Harness`/`solve()` API + CLI, web research (Tavily search/extract, Markdown fetch), **document ingestion** (`read_document` via Docling — PDF/spreadsheet → Markdown with tables), **live status updates** (built-in, developer, and MCP tools → an `on_status` feed / `--verbose`), and an **AG-UI / CopilotKit** integration (`Harness.agui_stream`).
 
 Planned (documented under `docs/superpowers/`):
 
