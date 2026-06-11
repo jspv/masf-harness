@@ -96,6 +96,31 @@ result.error        # None, or a string if the run failed (e.g. context overflow
 
 Your tools are wrapped as MAF agent tools automatically, and their returns pass through the same spill middleware — so tool-produced and code-produced data are identical kinds of handle.
 
+### Sessions: one-shot vs continuous
+
+The harness serves both one-shot and continuous (multi-turn) interactions from any frontend.
+
+- **One-shot** (`solve`) is ephemeral — it runs and **cleans up its workspace** when done. Pass `keep=True` to retain the audit trail (`result.session_dir`).
+- **Continuous** keeps a persistent workspace (handles + sandbox files) and conversation history across turns, until you close it (or an optional idle TTL expires).
+
+```python
+import asyncio
+from harness import Harness, HarnessConfig
+
+async def main():
+    h = Harness(HarnessConfig(idle_ttl_s=1800))     # idle conversations expire after 30 min (optional)
+    conv = await h.aopen("thread-42")                # open or resume by id (e.g. an AG-UI threadId)
+    print((await conv.aask("load sales.csv and summarize")).final_text)
+    print((await conv.aask("now filter to EU")).final_text)   # sees the prior turn's handles + history
+    await conv.aclose()                              # reap this conversation's workspace
+    await h.aclose_sessions()                        # (host shutdown) close any remaining
+    # await h.sweep_sessions()  # reap idle conversations on your own cadence
+
+asyncio.run(main())
+```
+
+AG-UI hosts get this automatically — `agui_stream` maps each request's `threadId` to a persistent conversation, so handles and files persist across turns (history stays in the AG-UI message replay).
+
 ### MCP servers
 
 Pass a MAF `MCPTool` — stdio, Streamable-HTTP, or WebSocket — in the same `tools=[…]` list. The harness connects each server, **owns its lifecycle** (closing it when the run ends, even on error), and attaches the same spill handling to every tool the server exposes — so a large MCP return (a long message list, a big query result) lands as a clean typed handle instead of flooding context.
@@ -269,6 +294,8 @@ harness/
   sandbox_container.py  hardened OCI-container backend (podman/docker)
   container_runtime.py  runtime detection, image build, package layer
   session.py     Session — root dir + store + sandbox for one run
+  conversation.py  persistent multi-turn Conversation (workspace + MAF AgentSession)
+  manager.py       SessionManager: continuous-session registry + lazy TTL
   spill.py       large/structured tool & MCP returns → handles (MAF result_parser)
   agui.py        AG-UI event stream (status overlay over agent-framework-ag-ui)
   bundles.py     capability bundles (code / files / web) + their instructions
@@ -283,7 +310,7 @@ tests/             mirror of the package (unit + integration + security tests)
 
 ## Status & roadmap
 
-Implemented: foundation (handles, sandbox, path-jail), the agent loop + tool surface, the `Harness`/`solve()` API + CLI, web research (Tavily search/extract, Markdown fetch), **document ingestion** (`read_document` via Docling — PDF/spreadsheet → Markdown with tables), **live status updates** (built-in, developer, and MCP tools → an `on_status` feed / `--verbose`), and an **AG-UI / CopilotKit** integration (`Harness.agui_stream`), and a **container sandbox tier** (hardened Podman/Docker isolation behind `SandboxExecutor`).
+Implemented: foundation (handles, sandbox, path-jail), the agent loop + tool surface, the `Harness`/`solve()` API + CLI, web research (Tavily search/extract, Markdown fetch), **document ingestion** (`read_document` via Docling — PDF/spreadsheet → Markdown with tables), **live status updates** (built-in, developer, and MCP tools → an `on_status` feed / `--verbose`), and an **AG-UI / CopilotKit** integration (`Harness.agui_stream`), and a **container sandbox tier** (hardened Podman/Docker isolation behind `SandboxExecutor`), and a **session lifecycle** model (ephemeral one-shot `solve`; persistent continuous `aopen`/`aask`/`aclose` with optional idle TTL).
 
 Planned (documented under `docs/superpowers/`):
 
