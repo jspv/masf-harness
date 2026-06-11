@@ -85,9 +85,15 @@ def ensure_layer(runtime: str, config: SandboxConfig, base: Path | None = None,
     target.mkdir(parents=True, exist_ok=True)
     tag = image_tag(config.preinstalled)
     ensure_image(runtime, tag, config, run)
-    cmd = [runtime, "run", "--rm", "--user", f"{os.getuid()}:{os.getgid()}",
-           "-v", f"{target}:/layer:rw", tag,
-           "pip", "install", "--no-cache-dir", "--target", "/layer", *config.pip_packages]
+    cmd = [runtime, "run", "--rm"]
+    # See ContainerSandbox._build_run_argv: rootless podman maps the host user to container-root,
+    # so the host-owned /layer bind mount is unwritable to the hardening --user. keep-id maps the
+    # host uid through so --user owns the mount. (podman-only; docker rootless rejects it.)
+    if runtime == "podman":
+        cmd += ["--userns=keep-id"]
+    cmd += ["--user", f"{os.getuid()}:{os.getgid()}",
+            "-v", f"{target}:/layer:rw", tag,
+            "pip", "install", "--no-cache-dir", "--target", "/layer", *config.pip_packages]
     proc = run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:
         raise RuntimeError(f"failed to provision pip_packages into {target}:\n{proc.stderr}")

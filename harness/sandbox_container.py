@@ -37,6 +37,15 @@ class ContainerSandbox(_OrchestratedSandbox):
             "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
             "--pids-limit", str(_PIDS_LIMIT),
             "--memory", f"{cfg.max_memory_mb}m", "--cpus", str(cfg.max_cpus),
+        ]
+        # Rootless podman maps the host user to container-root by default, so a bind-mounted
+        # session root (owned by the host uid, 0600 scripts) is unreadable/unwritable to the
+        # hardening --user below. keep-id maps the host uid straight through, so ownership of the
+        # mounted workspace lines up with the --user we run as. (podman-only flag; docker rootless
+        # uses a different model and rejects it.)
+        if self._runtime == "podman":
+            argv += ["--userns=keep-id"]
+        argv += [
             "--user", f"{os.getuid()}:{os.getgid()}",
             "-v", f"{ctx.root}:/workspace:rw",
             "-v", f"{_RUNTIME_DIR}:/runtime:ro",
