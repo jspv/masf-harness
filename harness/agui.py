@@ -39,7 +39,7 @@ async def merge_status(events: AsyncIterator[Any], bus: StatusBus,
     the source ends. The subscriber is always removed on exit.
     """
     loop = asyncio.get_running_loop()
-    queue: asyncio.Queue = asyncio.Queue()
+    queue: asyncio.Queue[Any] = asyncio.Queue()
 
     def _sink(status_event: StatusEvent) -> None:
         loop.call_soon_threadsafe(queue.put_nowait, to_event(status_event))
@@ -50,13 +50,14 @@ async def merge_status(events: AsyncIterator[Any], bus: StatusBus,
             while not queue.empty():
                 yield queue.get_nowait()
             yield event
+        await asyncio.sleep(0)          # let any last call_soon_threadsafe put land
         while not queue.empty():
             yield queue.get_nowait()
     finally:
         unsubscribe()
 
 
-async def agui_event_stream(agent: Any, bus: StatusBus, input_data: dict,
+async def agui_event_stream(agent: Any, bus: StatusBus, input_data: dict[str, Any],
                             **agui_kwargs: Any) -> AsyncIterator[Any]:
     """Run ``agent`` via ``AgentFrameworkAgent(**agui_kwargs)`` and overlay ``bus``'s status.
 

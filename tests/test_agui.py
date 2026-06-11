@@ -89,6 +89,23 @@ def test_merge_status_unsubscribes_on_exit():
     assert bus._subscribers == []                    # sink removed in finally
 
 
+def test_merge_status_emitted_during_final_event_is_not_lost():
+    bus = StatusBus()
+
+    async def source():
+        yield "A"
+        bus.emit(StatusEvent(tool="t", message="final"))   # emitted during the LAST event, no trailing await
+
+    out = []
+
+    async def run():
+        async for ev in merge_status(source(), bus, to_event=_tag):
+            out.append(ev)
+
+    asyncio.run(run())
+    assert ("status", "final") in out
+
+
 @pytest.mark.skipif(not _HAS_AGUI, reason="needs the agui extra (ag-ui-protocol)")
 def test_status_to_agui_maps_fields():
     ev = status_to_agui(StatusEvent(tool="run_python", message="running", current=1, total=3))
