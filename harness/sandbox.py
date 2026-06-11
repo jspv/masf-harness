@@ -1,9 +1,9 @@
-"""Local subprocess sandbox: runs agent scripts in a child process, root-confined.
+"""Sandbox backends for running agent scripts, root-confined.
 
-NOTE: ``run_script`` / ``run_code`` are sequential and NOT re-entrant per root.
-Each run uses per-run-unique control files (keyed by pid + run counter), so
-sequential runs never clobber each other's scratch, but a single sandbox instance
-is not designed to be driven concurrently from multiple threads against one root.
+``_OrchestratedSandbox`` owns the shared, backend-agnostic control-file orchestration; each
+backend implements only ``_launch`` (how the child process is run). ``LocalSubprocessSandbox``
+runs a scrubbed-env child with rlimits; the container backend lives in ``sandbox_container``.
+See ``_OrchestratedSandbox`` for the (sequential, non-reentrant-per-root) run contract.
 """
 
 from __future__ import annotations
@@ -84,6 +84,7 @@ class _OrchestratedSandbox:
     def run_code(self, code: str, args: list[str] | None = None) -> ExecResult:
         scripts = self.root / _SCRIPTS_DIR
         scripts.mkdir(exist_ok=True)
+        # Collision-free across instances/processes; scripts persist as debuggable artifacts.
         fd, abspath = tempfile.mkstemp(prefix="inline_", suffix=".py", dir=scripts)
         os.close(fd)
         Path(abspath).write_text(code, encoding="utf-8")
@@ -92,7 +93,7 @@ class _OrchestratedSandbox:
 
     def run_script(self, path: str, args: list[str] | None = None) -> ExecResult:
         script = safe_path(self.root, path)  # raises PathEscapesRootError if outside
-        argv = [str(a) for a in (args or [])]
+        argv = [str(a) for a in (args or [])]  # coerce so non-str args fail clearly, not opaquely
 
         self._run_counter += 1
         token = f"{os.getpid()}_{self._run_counter}"
@@ -121,6 +122,8 @@ class _OrchestratedSandbox:
                 except json.JSONDecodeError as e:
                     emit_error = f"harness: malformed emit payload: {e}"
 
+            # Ergonomic fallback: if the script neither emitted nor ended in an expression but
+            # printed something, surface that so a model that just print()s an answer still gets one.
             if (result is None and emit_error is None and launched.exit_code == 0
                     and launched.stdout.strip()):
                 result = launched.stdout.strip()
@@ -137,6 +140,8 @@ class _OrchestratedSandbox:
                 f.unlink(missing_ok=True)
 
     def _ingest_new_handles(self, new_handles_file: Path) -> list[str]:
+        """Register handles the child wrote. Tolerant: a corrupt line is skipped, not fatal, so
+        one bad record can't abort ingestion or leave the store inconsistent."""
         ids: list[str] = []
         if not new_handles_file.exists():
             return ids
@@ -190,7 +195,7 @@ class LocalSubprocessSandbox(_OrchestratedSandbox):
             mem = cfg.max_memory_mb * 1024 * 1024
             fsize = cfg.max_file_size_mb * 1024 * 1024
             for res_id, limit in (
-                (resource.RLIMIT_AS, mem),
+                (resource.RLIMIT_AS, mem),      # may be rejected on macOS — best-effort
                 (resource.RLIMIT_FSIZE, fsize),
                 (resource.RLIMIT_CORE, 0),
             ):
