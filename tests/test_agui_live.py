@@ -31,7 +31,7 @@ def _collect(input_data, **harness_kwargs):
     return asyncio.run(run())
 
 
-def test_agui_stream_emits_lifecycle_toolcall_and_status(tmp_path):
+def test_agui_stream_emits_lifecycle_toolcall_and_status():
     events = _collect(
         {"messages": [{"role": "user", "content": "Use run_python to compute 6*7 and report it."}],
          "threadId": "t", "runId": "r"},
@@ -44,7 +44,7 @@ def test_agui_stream_emits_lifecycle_toolcall_and_status(tmp_path):
     assert any(s.value.get("tool") == "run_python" for s in statuses)
 
 
-def test_agui_stream_calls_a_frontend_tool(tmp_path):
+def test_agui_stream_calls_a_frontend_tool():
     events = _collect(
         {"messages": [{"role": "user", "content": "Render a bar chart of [1,2,3] with show_chart."}],
          "threadId": "t", "runId": "r",
@@ -58,7 +58,7 @@ def test_agui_stream_calls_a_frontend_tool(tmp_path):
     assert "show_chart" in names                                # request-defined tool was called
 
 
-def test_agui_stream_overlays_mcp_status(tmp_path):
+def test_agui_stream_overlays_mcp_status():
     from agent_framework import MCPStdioTool
 
     mcp = MCPStdioTool(name="statusfix", command=sys.executable, args=[_FIXTURE])
