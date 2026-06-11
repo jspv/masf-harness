@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import bundles as _bundles
-from .config import HarnessConfig
+from .config import HarnessConfig, SandboxConfig
 from .handles import HandleStore
 from .sandbox import LocalSubprocessSandbox, SandboxExecutor
 from .status import StatusBus, StatusEvent, bind_bus
@@ -166,7 +166,8 @@ def _resolve_root(config: HarnessConfig) -> Path:
     return (base / str(next_id)).resolve()
 
 
-def _build_sandbox(root, store, sandbox_config):
+def _build_sandbox(root: Path, store: HandleStore,
+                   sandbox_config: SandboxConfig) -> SandboxExecutor:
     """Pick the sandbox backend from config (default: local)."""
     if sandbox_config.backend == "container":
         from .sandbox_container import ContainerSandbox  # local import: optional backend
