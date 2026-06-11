@@ -10,7 +10,7 @@ from typing import Any, Callable
 from . import bundles as _bundles
 from .config import HarnessConfig
 from .handles import HandleStore
-from .sandbox import LocalSubprocessSandbox
+from .sandbox import LocalSubprocessSandbox, SandboxExecutor
 from .status import StatusBus, StatusEvent, bind_bus
 
 
@@ -18,7 +18,7 @@ from .status import StatusBus, StatusEvent, bind_bus
 class Session:
     root: Path
     store: HandleStore
-    sandbox: LocalSubprocessSandbox
+    sandbox: SandboxExecutor
     config: HarnessConfig
     _mcp_connected: list[Any] = field(default_factory=list, init=False, repr=False)
     status_bus: StatusBus = field(default_factory=StatusBus, init=False, repr=False)
@@ -29,7 +29,7 @@ class Session:
         root = _resolve_root(config)
         root.mkdir(parents=True, exist_ok=True)
         store = HandleStore(root)
-        sandbox = LocalSubprocessSandbox(root=root, store=store, config=config.sandbox)
+        sandbox = _build_sandbox(root, store, config.sandbox)
         return cls(root=root, store=store, sandbox=sandbox, config=config)
 
     @property
@@ -164,3 +164,11 @@ def _resolve_root(config: HarnessConfig) -> Path:
     existing = [int(p.name) for p in base.iterdir() if p.name.isdigit()]
     next_id = (max(existing) + 1) if existing else 1
     return (base / str(next_id)).resolve()
+
+
+def _build_sandbox(root, store, sandbox_config):
+    """Pick the sandbox backend from config (default: local)."""
+    if sandbox_config.backend == "container":
+        from .sandbox_container import ContainerSandbox  # local import: optional backend
+        return ContainerSandbox(root=root, store=store, config=sandbox_config)
+    return LocalSubprocessSandbox(root=root, store=store, config=sandbox_config)

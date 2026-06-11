@@ -93,3 +93,14 @@ def ensure_layer(runtime: str, config: SandboxConfig, base: Path | None = None,
         raise RuntimeError(f"failed to provision pip_packages into {target}:\n{proc.stderr}")
     sentinel.write_text("ok", encoding="utf-8")   # only after a successful install
     return target
+
+
+def _build_sandbox_main() -> None:
+    """Console-script entry (``harness-build-sandbox``): pre-build the sandbox image."""
+    from .config import SandboxConfig
+
+    config = SandboxConfig()
+    runtime = detect_runtime(config.container_runtime)
+    tag = image_tag(config.preinstalled)
+    ensure_image(runtime, tag, config)
+    print(f"sandbox image ready: {tag} (via {runtime})")

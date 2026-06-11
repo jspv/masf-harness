@@ -21,6 +21,7 @@ agui = ["agent-framework-ag-ui>=1.0.0rc4"]
 [project.scripts]
 harness = "harness.cli:main"
 harness-prefetch-docling = "harness.tools.documents:_prefetch_main"
+harness-build-sandbox = "harness.container_runtime:_build_sandbox_main"
 
 [dependency-groups]
 dev = [
