@@ -47,6 +47,19 @@ def test_conversation_keep_on_close(tmp_path):
     assert root.exists()                             # retained when reap_on_close=False
 
 
+def test_conversation_aclose_is_idempotent(tmp_path):
+    client = StubChatClient([text("hi")])
+
+    async def run():
+        conv = await Conversation.acreate(id="c4", config=HarnessConfig(root_dir=tmp_path / "i"),
+                                          client=client, tools=[], bundles=())
+        await conv.aask("hello")
+        await conv.aclose()
+        await conv.aclose()                          # second close must be a no-op, not raise
+
+    asyncio.run(run())                               # completes without error
+
+
 def test_conversation_error_is_non_fatal(tmp_path):
     class _Boom(StubChatClient):
         async def _inner_get_response(self, *, messages, stream, options, **kwargs):

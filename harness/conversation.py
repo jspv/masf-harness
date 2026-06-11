@@ -11,10 +11,13 @@ from __future__ import annotations
 import asyncio
 import shutil
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .config import HarnessConfig
 from .session import Session
+
+if TYPE_CHECKING:
+    from .api import Result
 
 
 class Conversation:
@@ -27,6 +30,7 @@ class Conversation:
         self.reap_on_close = reap_on_close
         self.last_activity = time.monotonic()
         self._lock = asyncio.Lock()
+        self._closed = False
 
     @classmethod
     async def acreate(cls, *, id: str, config: HarnessConfig, client: Any,
@@ -44,7 +48,7 @@ class Conversation:
             raise
         return cls(id, session, agent, agent_session, reap_on_close=reap_on_close)
 
-    async def aask(self, question: str) -> Any:
+    async def aask(self, question: str) -> "Result":
         """Run one turn (serialized per conversation). Returns a Result; errors are captured."""
         from .api import Result
 
@@ -61,6 +65,9 @@ class Conversation:
 
     async def aclose(self) -> None:
         """Tear down the workspace (MCP + bus), then reap the root unless retained. Idempotent."""
+        if self._closed:
+            return
+        self._closed = True   # mark closed up front: a teardown failure isn't retried
         try:
             await self.session.__aexit__(None, None, None)
         finally:
