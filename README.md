@@ -1,12 +1,51 @@
 # harness
 
-A reusable Python substrate for building **autonomous data-gathering and data-integration agents** — a single-agent-loop ("coding agent") harness on the [Microsoft Agent Framework](https://github.com/microsoft/agent-framework) (MAF).
+> A reusable Python substrate for building autonomous data-gathering and data-integration agents — a single-agent-loop ("coding agent") harness on the [Microsoft Agent Framework](https://github.com/microsoft/agent-framework) (MAF).
+
+![Python](https://img.shields.io/badge/Python-3.12%2B-blue)
+![Built on Microsoft Agent Framework](https://img.shields.io/badge/Built%20on-Microsoft%20Agent%20Framework-512BD4)
 
 You give it a task and a set of tools (or MCP servers). It fetches data from links and tools, keeps large datasets **out of the model's context** as typed *handles*, and uses a **sandboxed Python environment** to write and run code that analyzes that data — returning a trustworthy answer plus a re-openable audit trail of every script and artifact.
 
 This is **v1: the general substrate**. Specific problems plug in later as user-supplied tools / MCP servers.
 
-## The core idea: references, not payloads
+## Key features
+
+- **References, not payloads.** Large or structured returns from tools, MCP servers, and URLs spill to typed **handles** (JSON / text / Parquet) *before* they reach the model — ~200 tokens stand in for megabytes.
+- **A computer for the agent.** A sandboxed `run_python` speaks the same handle store (`load(id)` / `save(id, obj)`), so the agent writes and runs code to do the real work; only what it deliberately returns flows back into context.
+- **MAF-native.** Builds a standard MAF agent (`create_harness_agent`) you can run, stream, compose into workflows, or use as a sub-agent — with any MAF chat client (OpenAI by default; Azure, Foundry, or your own).
+- **One-shot and continuous.** Ephemeral, self-cleaning `solve()` for one-shots; a persistent multi-turn `Conversation` (workspace + history) with an optional idle TTL for continuous use.
+- **Tools and MCP, auto-handled.** Plain Python callables and MCP servers (stdio / HTTP / WebSocket) drop into one `tools=[…]` list; spill handling and server lifecycle are managed for you.
+- **Live status.** Built-in, developer (`report_progress`), and MCP-server progress all stream through one `on_status` feed, `--verbose`, or AG-UI events.
+- **AG-UI / CopilotKit.** Stream answer text, tool-call visibility, and status as AG-UI events; frontend tools, shared state, human-in-the-loop, and multi-turn history all work.
+- **Confined by construction.** One session root holds everything; every model-supplied path passes through a single `safe_path` chokepoint, and a hardened container sandbox tier is available for real isolation.
+
+## Table of contents
+
+- [How it works](#how-it-works)
+- [Getting started](#getting-started)
+  - [Installation](#installation)
+  - [API keys](#api-keys)
+  - [Quickstart: CLI](#quickstart-cli)
+  - [Quickstart: library](#quickstart-library)
+- [Examples and samples](#examples-and-samples)
+- [Guides](#guides)
+  - [Use it as a MAF agent](#use-it-as-a-maf-agent)
+  - [Bring your own model client](#bring-your-own-model-client)
+  - [Sessions: one-shot vs continuous](#sessions-one-shot-vs-continuous)
+  - [MCP servers](#mcp-servers)
+  - [Live status updates](#live-status-updates)
+  - [AG-UI and CopilotKit](#ag-ui-and-copilotkit)
+- [Reference](#reference)
+  - [Tool surface](#tool-surface)
+  - [Security and confinement](#security-and-confinement)
+  - [Sandbox tiers](#sandbox-tiers)
+  - [Configuration](#configuration)
+- [Development](#development)
+- [Project layout](#project-layout)
+- [Roadmap](#roadmap)
+
+## How it works
 
 The central design move is keeping large data out of context. When a tool, MCP server, or URL returns something big or structured, a **"spill" middleware** intercepts it *before it reaches the model* and writes it to disk as a typed **handle** (JSON, text, or a dataframe stored as Parquet). The model only ever sees a compact summary:
 
@@ -18,9 +57,11 @@ The central design move is keeping large data out of context. When a tool, MCP s
   "preview": "date,units,revenue\n2025-01-01,12,840.0\n... (5 of 480000 rows)" }
 ```
 
-~200 tokens stand in for 18 MB. To actually work with the data, the agent is given a **computer**: it writes `.py` scripts and runs them in a sandbox that speaks the same handle store (`load(id)` / `save(id, obj)`). Only the small value it deliberately prints/returns flows back into context; derived data becomes new handles.
+~200 tokens stand in for 18 MB. To actually work with the data, the agent is given a **computer**: it writes `.py` scripts and runs them in a sandbox that speaks the same handle store (`load(id)` / `save(id, obj)`). Only the small value it deliberately prints/returns flows back into context; derived data becomes new handles. The loop follows a **search → read → analyze** triad: `search` to locate, `read_file` to load the right slice, `run_python` to analyze.
 
-## Install
+## Getting started
+
+### Installation
 
 Requires **Python 3.12** and [`uv`](https://docs.astral.sh/uv/). `agent-framework-core` is a prerelease, so allow prereleases when syncing:
 
@@ -28,13 +69,14 @@ Requires **Python 3.12** and [`uv`](https://docs.astral.sh/uv/). `agent-framewor
 uv sync --prerelease=allow
 ```
 
-Document ingestion (`read_document`) uses [Docling](https://github.com/DS4SD/docling), an optional heavy dependency. Enable it with:
+Optional extras:
 
 ```bash
-uv sync --prerelease=allow --extra docling
+uv sync --prerelease=allow --extra docling   # document ingestion (read_document)
+uv sync --prerelease=allow --extra agui       # AG-UI / CopilotKit streaming
 ```
 
-Docling downloads its models on first use. To pay that cost up front (e.g. at deploy time) instead of on the first `read_document` call, prefetch them:
+Document ingestion uses [Docling](https://github.com/DS4SD/docling), which downloads its models on first use. To pay that cost up front (e.g. at deploy time) instead of on the first `read_document` call, prefetch them:
 
 ```bash
 harness-prefetch-docling          # add --ocr to also fetch OCR models (scanned documents)
@@ -42,32 +84,30 @@ harness-prefetch-docling          # add --ocr to also fetch OCR models (scanned 
 
 OCR is **off by default** — born-digital PDFs/Office files get their tables and structure without it. Set `HarnessConfig.documents.ocr = True` for scanned/image documents.
 
+### API keys
+
 Create a `.env` in the project root:
 
 ```bash
-OPENAI_API_KEY=sk-...        # required
+OPENAI_API_KEY=sk-...        # required by the default OpenAI client (see "Bring your own model client" to use another provider)
 TAVILY_API_KEY=tvly-...      # optional — enables web_search / web_extract
 ```
 
-## Quickstart
-
-### CLI
+### Quickstart: CLI
 
 ```bash
 uv run harness "What is the total EU revenue in 2025, excluding invalid rows?"
 ```
 
-Flags:
-
 | Flag | Default | Meaning |
 |---|---|---|
-| `--model` | `gpt-5-mini` | Model for the built-in OpenAI client (reads `OPENAI_API_KEY`, or `AZURE_OPENAI_*` for Azure routing). The CLI uses that client; for other providers drive the harness from Python with your own client — see [As a standard MAF agent](#as-a-standard-maf-agent) |
+| `--model` | `gpt-5-mini` | Model for the built-in OpenAI client (reads `OPENAI_API_KEY`, or `AZURE_OPENAI_*` for Azure routing). The CLI uses that client; for other providers drive the harness from Python with your own client — see [Bring your own model client](#bring-your-own-model-client) |
 | `--root` | a fresh session dir | Workspace root (the confinement boundary) |
 | `-v`, `--verbose` | off | Print live tool status to stderr as the task runs (see [Live status updates](#live-status-updates)) |
 
 The CLI prints the answer and leaves `[session: …]` — the directory holding every script, handle, and artifact for inspection.
 
-### Library
+### Quickstart: library
 
 ```python
 from harness import Harness, HarnessConfig, solve
@@ -83,7 +123,7 @@ def query_sales(region: str) -> list[dict]:
 
 # With no client passed, the harness builds the default OpenAI client (reads OPENAI_API_KEY).
 # `model` configures ONLY that default client — to use Azure / Foundry / any other provider,
-# pass your own MAF chat client (see "As a standard MAF agent" below); `model` is then ignored.
+# pass your own MAF chat client (see "Bring your own model client"); `model` is then ignored.
 h = Harness(HarnessConfig(model="gpt-5-mini"))
 result = h.solve(
     "Total EU revenue in 2025, excluding invalid rows?",
@@ -99,9 +139,22 @@ result.error        # None, or a string if the run failed (e.g. context overflow
 
 Your tools are wrapped as MAF agent tools automatically, and their returns pass through the same spill middleware — so tool-produced and code-produced data are identical kinds of handle.
 
-> **Model provider:** the convenience entry points (`solve`, `Harness(...)` with no `client`) use MAF's OpenAI client by default — following [MAF's own Python convention](https://github.com/microsoft/agent-framework/blob/main/python/README.md) (`OPENAI_API_KEY` present → OpenAI). The harness is **not** OpenAI-only: pass `client=<any MAF chat client>` to `Harness(...)` to use Azure OpenAI, Foundry, or anything implementing MAF's chat-client protocol. The [As a standard MAF agent](#as-a-standard-maf-agent) section shows how, including an Azure example with a custom token provider.
+## Examples and samples
 
-### As a standard MAF agent
+The quickstarts above and the guides below are each worked examples. One runnable end-to-end sample ships in the repo:
+
+| Sample | Shows |
+|---|---|
+| [`examples/agui_server.py`](examples/agui_server.py) | A FastAPI endpoint that streams a harness run to an AG-UI / CopilotKit client as SSE |
+| [Use it as a MAF agent](#use-it-as-a-maf-agent) | Building and driving the agent with the ordinary MAF agent surface (`run` / streaming / threads / workflows) |
+| [Bring your own model client](#bring-your-own-model-client) | Injecting an Azure / Foundry / custom-auth chat client |
+| [Sessions: one-shot vs continuous](#sessions-one-shot-vs-continuous) | Persistent multi-turn conversations with a shared workspace |
+| [MCP servers](#mcp-servers) | Plugging in stdio / remote MCP servers |
+| [Live status updates](#live-status-updates) | Streaming tool progress to a callback or the CLI |
+
+## Guides
+
+### Use it as a MAF agent
 
 `solve()` and `Conversation` are conveniences over a plain Microsoft Agent Framework agent. When you want the agent **itself** — to drive it directly, stream it, give it a multi-turn thread, or drop it into a MAF workflow as a node/sub-agent — build it with `Session.create_agent()` and then use the ordinary MAF agent surface:
 
@@ -138,9 +191,9 @@ asyncio.run(main())
 
 Because the returned object is a standard MAF `Agent`, it composes anywhere a MAF agent is expected — as a workflow node, a sub-agent, or behind the AG-UI wrapper (`agui_stream` does exactly this with `conv.agent`). Construction goes through MAF's own `create_harness_agent(client, …)` factory, so apart from the workspace two-step and the spill-wrapping of your tools, you are building and running an ordinary MAF agent.
 
-#### Bring your own model client (Azure, Foundry, custom auth)
+### Bring your own model client
 
-The harness never authenticates a client for you when you supply one — it only needs an object implementing MAF's chat-client protocol (`SupportsChatGetResponse`). The same client is reused across one-shots and every continuous conversation. Two injection points:
+The convenience entry points (`solve`, `Harness(...)` with no `client`) use MAF's OpenAI client by default — following [MAF's own Python convention](https://github.com/microsoft/agent-framework/blob/main/python/README.md) (`OPENAI_API_KEY` present → OpenAI). The harness is **not** OpenAI-only: it needs only an object implementing MAF's chat-client protocol (`SupportsChatGetResponse`), and never authenticates one for you when you supply it. The same client is reused across one-shots and every continuous conversation. Two injection points:
 
 ```python
 # High-level facade — your client flows to solve / aopen / agui_stream
@@ -169,7 +222,7 @@ client = OpenAIChatClient(
 h = Harness(HarnessConfig(), client=client)      # config.model is ignored; the client carries it
 ```
 
-If you already hold a fully-built MAF chat client (your own custom-auth Azure/Foundry/OpenAI-compatible client), skip all of the above and just pass it: `Harness(HarnessConfig(), client=that)`.
+If you already hold a fully-built MAF chat client (your own custom-auth Azure / Foundry / OpenAI-compatible client), skip all of the above and just pass it: `Harness(HarnessConfig(), client=that)`.
 
 ### Sessions: one-shot vs continuous
 
@@ -253,7 +306,7 @@ Harness(tools=[crunch], on_status=show).solve("crunch 5 items")
 
 The CLI exposes the same feed with `-v`/`--verbose` (printed to stderr). MCP-server status needs no extra wiring — a server's `notifications/message` arrive tagged `mcp:<server>`, and its `notifications/progress` arrive tagged with the calling tool's name plus `current`/`total`.
 
-### AG-UI / CopilotKit
+### AG-UI and CopilotKit
 
 A harness run can drive an [AG-UI](https://docs.ag-ui.com/) client such as [CopilotKit](https://docs.copilotkit.ai/) — streamed answer text, live tool-call visibility, and the status feed above — all as AG-UI events. Install the optional extra:
 
@@ -281,11 +334,13 @@ async def agent(request: Request):
     return StreamingResponse(sse(), media_type="text/event-stream")
 ```
 
-Point your AG-UI client at this endpoint. The harness reuses the official `agent-framework-ag-ui` converter, so **frontend/generative-UI tools** (defined in the request), **shared state** (`state_schema`/`predict_state_config`, forwarded as keyword args to `agui_stream`), **human-in-the-loop**, and **multi-turn history** all work — with the harness's own progress feed overlaid as `harness.status` `CUSTOM` events. A runnable version is in `examples/agui_server.py`.
+Point your AG-UI client at this endpoint. The harness reuses the official `agent-framework-ag-ui` converter, so **frontend/generative-UI tools** (defined in the request), **shared state** (`state_schema`/`predict_state_config`, forwarded as keyword args to `agui_stream`), **human-in-the-loop**, and **multi-turn history** all work — with the harness's own progress feed overlaid as `harness.status` `CUSTOM` events. A runnable version is in [`examples/agui_server.py`](examples/agui_server.py).
 
-## Tool surface
+## Reference
 
-The agent gets nine root-confined tools. Domain data sources are *your* tools/MCP servers, auto-handled by spill.
+### Tool surface
+
+The agent gets a small, fixed set of root-confined tools (listed below; the web and document tools activate when their key/extra is present). Domain data sources are *your* tools/MCP servers, auto-handled by spill.
 
 | Tool | Purpose |
 |---|---|
@@ -297,19 +352,17 @@ The agent gets nine root-confined tools. Domain data sources are *your* tools/MC
 | `fetch_url(url)` | Fetch a URL → typed handle; HTML is cleaned to Markdown (trafilatura) |
 | `inspect_handle(id, …)` | Deeper on-demand look at a handle (fuller schema, more preview, optional stats) |
 | `web_search(query, max_results=5)` | Tavily web search (needs `TAVILY_API_KEY`) |
-| `web_extract(url)` | Tavily clean-content extraction |
+| `web_extract(url)` | Tavily clean-content extraction (needs `TAVILY_API_KEY`) |
 | `read_document(source)` | A workspace path or URL → clean markdown handle (tables preserved) via Docling; needs the `docling` extra |
 
-The loop follows the **search → read → analyze** triad: `search` to locate, `read_file` to load the right slice, `run_python` to analyze.
-
-## Confinement & security
+### Security and confinement
 
 Every session has one **root directory**; everything — handles, agent-written scripts, reads/writes, the sandbox `cwd` — lives under it.
 
 - **Layer 1 — Tool path-jail (guaranteed).** All model-supplied paths route through one chokepoint, `safe_path(root, p)`, which resolves symlinks *before* checking and rejects any path outside the root (blocks `..`, absolute paths, symlink escapes). It's the most heavily tested code in the project.
 - **Layer 2 — Executed code.** On the default `local` tier, `run_python` runs in a subprocess with `cwd=root`, a scrubbed environment, `resource` rlimits (CPU, memory, file size) and a wall-clock timeout (best-effort isolation). For real isolation, switch to the `container` tier — see [Sandbox tiers](#sandbox-tiers).
 
-> The **container tier** provides real isolation: set `HarnessConfig.sandbox.backend = "container"` to run `run_python` in a hardened Podman/Docker container — network off by default, read-only root filesystem, dropped capabilities, non-root, and memory/cpu/pid limits — behind the same `SandboxExecutor` interface (no other harness code changes). See [Sandbox tiers](#sandbox-tiers).
+> The **container tier** provides real isolation: set `HarnessConfig.sandbox.backend = "container"` to run `run_python` in a hardened Podman/Docker container — network off by default, read-only root filesystem, dropped capabilities, non-root, and memory/cpu/pid limits — behind the same `SandboxExecutor` interface (no other harness code changes).
 
 ### Sandbox tiers
 
@@ -332,18 +385,19 @@ Harness(cfg).solve("…")
 
 The image (Python + `preinstalled` libraries) is **built automatically on first use** and cached; run `harness-build-sandbox` to pre-build it in CI/deploy. Notes: on macOS the runtime runs in a Linux VM, so the session root must sit under a VM-shared path (the default `~/.harness/...` is); the container tier does not enforce `max_file_size_mb` (memory/pid/cpu/network are enforced instead).
 
-## Configuration
+### Configuration
 
 `HarnessConfig` (see `harness/config.py`) is a plain dataclass:
 
 | Field | Default | Notes |
 |---|---|---|
-| `model` | `"gpt-5-mini"` | |
+| `model` | `"gpt-5-mini"` | Used only by the built-in OpenAI client; ignored when you inject a `client` |
 | `spill_threshold_bytes` | `8192` | Lower edge of the spill-over zone: a tool return over this becomes a handle |
 | `max_spill_bytes` | `100 MiB` | Upper edge: a return larger than this is **rejected loudly** (`SpillLimitExceeded`), never silently stored |
 | `max_context_window_tokens` | `128_000` | Fed to MAF compaction |
 | `max_output_tokens` | `4096` | |
 | `root_dir` | `None` | `None` → a session dir under `./.harness/sessions/` |
+| `idle_ttl_s` | `None` | Continuous-session idle TTL; `None` → never expire |
 | `sandbox` | `SandboxConfig()` | `backend` (local/container), timeout, limits, network, `pip_packages`, preinstalled libs |
 | `fetch` | `FetchConfig()` | `max_bytes`, timeout, allowed URL schemes |
 | `search` | `SearchConfig()` | Tavily provider, key, `max_results` |
@@ -357,6 +411,8 @@ uv run ruff check .
 ```
 
 Testing is a first-class principle: **tests are written before implementation for every unit** (TDD). The fast suite runs deterministically against a stub chat client (no API cost); live tests are gated behind `HARNESS_LIVE=1`. `safe_path` and the spill logic are held to the highest bar.
+
+Design specs and phased implementation plans for each feature live under [`docs/superpowers/`](docs/superpowers/).
 
 ## Project layout
 
@@ -379,17 +435,18 @@ harness/
   api.py         Harness / solve() / Result
   cli.py         thin streaming CLI
 docs/superpowers/  design specs + phased implementation plans
+examples/          runnable samples (AG-UI server)
 evals/             eval harness
 tests/             mirror of the package (unit + integration + security tests)
 ```
 
-## Status & roadmap
+## Roadmap
 
-Implemented: foundation (handles, sandbox, path-jail), the agent loop + tool surface, the `Harness`/`solve()` API + CLI, web research (Tavily search/extract, Markdown fetch), **document ingestion** (`read_document` via Docling — PDF/spreadsheet → Markdown with tables), **live status updates** (built-in, developer, and MCP tools → an `on_status` feed / `--verbose`), and an **AG-UI / CopilotKit** integration (`Harness.agui_stream`), and a **container sandbox tier** (hardened Podman/Docker isolation behind `SandboxExecutor`), and a **session lifecycle** model (ephemeral one-shot `solve`; persistent continuous `aopen`/`aask`/`aclose` with optional idle TTL).
+**Implemented:** foundation (handles, sandbox, path-jail); the agent loop + tool surface; the `Harness`/`solve()` API + CLI; web research (Tavily search/extract, Markdown fetch); **document ingestion** (`read_document` via Docling — PDF/spreadsheet → Markdown with tables); **live status updates** (built-in, developer, and MCP tools → an `on_status` feed / `--verbose`); an **AG-UI / CopilotKit** integration (`Harness.agui_stream`); a **container sandbox tier** (hardened Podman/Docker isolation behind `SandboxExecutor`); and a **session lifecycle** model (ephemeral one-shot `solve`; persistent continuous `aopen`/`aask`/`aclose` with optional idle TTL).
 
-Planned (documented under `docs/superpowers/`):
+**Planned** (documented under [`docs/superpowers/`](docs/superpowers/)):
 
 - **Micro-VM sandbox tier** — gVisor / Firecracker, behind the same `SandboxExecutor` interface.
 - **MAF skills + memory providers** (v1.1) and a MAF Workflow durability / HITL outer shell.
 
-Out of scope for now: headless-browser/JS rendering, a full search-provider abstraction, and alternative document backends.
+**Out of scope for now:** headless-browser/JS rendering, a full search-provider abstraction, and alternative document backends.
