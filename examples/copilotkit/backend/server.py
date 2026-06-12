@@ -15,6 +15,7 @@ Run (with the agui extra installed and OPENAI_API_KEY in your environment/.env):
 from __future__ import annotations
 
 import sys
+import tempfile
 from pathlib import Path
 
 from ag_ui.encoder import EventEncoder
@@ -22,10 +23,18 @@ from agent_framework import MCPStdioTool
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
 
-from harness import Harness
+from harness import Harness, HarnessConfig
 
 app = FastAPI()
-harness = Harness()  # default OpenAI client (needs OPENAI_API_KEY); pass client=... for another provider
+
+# Put session/sandbox output in a temp dir, NOT the default ./.harness under the repo.
+# Why: the agent's run_python writes scripts into the session dir; with `uvicorn --reload`
+# watching the repo, those writes would hot-reload the server mid-conversation, wiping the
+# in-memory SessionManager. The next message (same threadId) would then rebuild a fresh
+# conversation, and the replayed history — which contains a backend tool *call* but not its
+# output — gets rejected by the model ("No tool output found for function call").
+_SESSIONS = Path(tempfile.gettempdir()) / "harness-copilotkit-sessions"
+harness = Harness(HarnessConfig(root_dir=_SESSIONS))  # default OpenAI client (needs OPENAI_API_KEY)
 
 _MCP_SERVER = Path(__file__).with_name("mcp_server.py")
 
