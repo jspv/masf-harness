@@ -96,6 +96,43 @@ result.error        # None, or a string if the run failed (e.g. context overflow
 
 Your tools are wrapped as MAF agent tools automatically, and their returns pass through the same spill middleware — so tool-produced and code-produced data are identical kinds of handle.
 
+### As a standard MAF agent
+
+`solve()` and `Conversation` are conveniences over a plain Microsoft Agent Framework agent. When you want the agent **itself** — to drive it directly, stream it, give it a multi-turn thread, or drop it into a MAF workflow as a node/sub-agent — build it with `Session.create_agent()` and then use the ordinary MAF agent surface:
+
+```python
+import asyncio
+from agent_framework.openai import OpenAIChatClient
+from harness import Session, HarnessConfig
+
+async def main():
+    # The two-step (open a workspace, then build the agent over it) is the only harness-specific
+    # part — it binds the agent to one session root + sandbox. The build call itself is standard MAF.
+    async with Session.create(HarnessConfig()) as session:
+        agent = await session.create_agent(
+            OpenAIChatClient(model="gpt-5-mini", env_file_path=".env"),
+            agent_instructions="Reconcile EU sales and flag anomalies.",  # your task prompt
+            tools=[query_sales, mcp],          # plain callables + MCPTools, spill-handled for you
+            bundles=("code", "files", "web"),  # which built-in tool families to include
+        )
+
+        # `agent` is a MAF `Agent` — the usual interface, nothing harness-specific from here:
+        reply = await agent.run("Which regions look anomalous?")
+        print(reply.text)
+
+        # Multi-turn over a MAF AgentSession (history threads across calls):
+        thread = agent.create_session()
+        await agent.run("Now compare against last quarter.", session=thread)
+
+        # Streaming:
+        async for update in agent.run("Summarize the findings.", stream=True):
+            print(update.text, end="")
+
+asyncio.run(main())
+```
+
+Because the returned object is a standard MAF `Agent`, it composes anywhere a MAF agent is expected — as a workflow node, a sub-agent, or behind the AG-UI wrapper (`agui_stream` does exactly this with `conv.agent`). Construction goes through MAF's own `create_harness_agent(client, …)` factory, so apart from the workspace two-step and the spill-wrapping of your tools, you are building and running an ordinary MAF agent.
+
 ### Sessions: one-shot vs continuous
 
 The harness serves both one-shot and continuous (multi-turn) interactions from any frontend.
