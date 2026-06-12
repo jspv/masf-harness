@@ -8,7 +8,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from agent_framework import BaseChatClient, ChatResponse, FunctionInvocationLayer, Message
+from agent_framework import (
+    BaseChatClient,
+    ChatResponse,
+    ChatResponseUpdate,
+    FunctionInvocationLayer,
+    Message,
+)
 from agent_framework._types import Content
 
 
@@ -28,7 +34,18 @@ class StubChatClient(FunctionInvocationLayer, BaseChatClient):
         self._script = list(script)
         self._turn = 0
 
-    async def _inner_get_response(self, *, messages, stream, options, **kwargs) -> ChatResponse:
+    def _inner_get_response(self, *, messages, stream, options, **kwargs):
+        # Plain (non-async) method per the BaseChatClient contract: return an awaitable ChatResponse
+        # when stream=False, or a ResponseStream when stream=True (the AG-UI path uses streaming).
         step = self._script[min(self._turn, len(self._script) - 1)]
         self._turn += 1
-        return ChatResponse(messages=Message(role="assistant", contents=[step]))
+        if stream:
+            async def _updates():
+                yield ChatResponseUpdate(role="assistant", contents=[step])
+
+            return self._build_response_stream(_updates())
+
+        async def _response() -> ChatResponse:
+            return ChatResponse(messages=Message(role="assistant", contents=[step]))
+
+        return _response()
