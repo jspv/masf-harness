@@ -1,0 +1,49 @@
+name: Publish to PyPI
+
+# Publishes to PyPI via Trusted Publishing (OIDC) — no API token stored anywhere.
+# Fires when you publish a GitHub Release. Tag/version come from pyproject (tether/__init__.py).
+on:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    name: Build distributions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Build sdist and wheel
+        run: uv build
+
+      - name: Check artifacts
+        run: uvx twine check dist/*
+
+      - name: Upload dist artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    # The environment name must match the Trusted Publisher you configure on PyPI.
+    environment:
+      name: pypi
+      url: https://pypi.org/project/tether-harness/
+    permissions:
+      id-token: write   # required for OIDC; this is what replaces the API token
+    steps:
+      - name: Download dist artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

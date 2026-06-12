@@ -20,10 +20,11 @@ wheels/
 # Tether session artifacts
 .tether/
 
-# Demo / eval run workspaces
-work/
-work*/
-pricing_run*/
+# Demo / eval run workspaces (anchored to repo root so nested dirs like
+# .github/workflows are not caught by the "work*" glob)
+/work/
+/work*/
+/pricing_run*/
 evals/runs/
 evals/results/
 evals/run.log
