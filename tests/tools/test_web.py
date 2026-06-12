@@ -1,11 +1,11 @@
 import httpx
 
-from harness import HarnessConfig, Session
-from harness.tools.web import web_search
+from tether import TetherConfig, Session
+from tether.tools.web import web_search
 
 
 def _session(tmp_path, api_key="test-key"):
-    cfg = HarnessConfig(root_dir=tmp_path / "r")
+    cfg = TetherConfig(root_dir=tmp_path / "r")
     cfg.search.api_key = api_key
     return Session.create(cfg)
 
@@ -75,7 +75,7 @@ def test_web_search_http_error_is_structured(tmp_path):
     assert "error" in out
 
 
-from harness.tools.web import web_extract
+from tether.tools.web import web_extract
 
 
 def test_web_extract_stores_markdown_handle(tmp_path):

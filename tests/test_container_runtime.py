@@ -1,7 +1,7 @@
 import pytest
 
-from harness.config import SandboxConfig
-from harness.container_runtime import (
+from tether.config import SandboxConfig
+from tether.container_runtime import (
     detect_runtime,
     ensure_image,
     ensure_layer,
@@ -32,7 +32,7 @@ def test_detect_raises_when_override_missing():
 def test_image_tag_is_stable_and_depends_on_preinstalled():
     a = image_tag(("pandas", "numpy"))
     assert a == image_tag(("numpy", "pandas"))        # order-independent
-    assert a.startswith("harness-sandbox:")
+    assert a.startswith("tether-sandbox:")
     assert a != image_tag(("pandas",))                # different set -> different tag
 
 
@@ -58,8 +58,8 @@ def test_ensure_image_builds_when_absent():
             return _Proc(1)                            # not present -> triggers build
         return _Proc(0)
 
-    ensure_image("podman", "harness-sandbox:abc", SandboxConfig(), run=fake_run)
-    assert any(a[1] == "build" and "-t" in a and "harness-sandbox:abc" in a for a in calls)
+    ensure_image("podman", "tether-sandbox:abc", SandboxConfig(), run=fake_run)
+    assert any(a[1] == "build" and "-t" in a and "tether-sandbox:abc" in a for a in calls)
 
 
 def test_ensure_image_skips_build_when_present():
@@ -70,7 +70,7 @@ def test_ensure_image_skips_build_when_present():
         assert argv[1] != "build", "should not build when image exists"
         return _Proc()
 
-    ensure_image("podman", "harness-sandbox:abc", SandboxConfig(), run=fake_run)
+    ensure_image("podman", "tether-sandbox:abc", SandboxConfig(), run=fake_run)
 
 
 def test_ensure_layer_provisions_once_then_serves_from_sentinel(tmp_path):

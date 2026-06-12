@@ -1,6 +1,6 @@
-from harness.cli import make_status_printer, run_cli
-from harness.status import StatusEvent
-from harness.testing import StubChatClient, text, tool_call
+from tether.cli import make_status_printer, run_cli
+from tether.status import StatusEvent
+from tether.testing import StubChatClient, text, tool_call
 
 
 def test_status_printer_formats_event():
@@ -13,7 +13,7 @@ def test_status_printer_formats_event():
 
 def test_verbose_prints_tool_status_to_stderr(tmp_path, capsys):
     client = StubChatClient([
-        tool_call("run_python", {"code": "from harness_sandbox import emit\nemit(1)\n"}),
+        tool_call("run_python", {"code": "from tether_sandbox import emit\nemit(1)\n"}),
         text("done"),
     ])
     code = run_cli(["go", "-v", "--root", str(tmp_path / "r")], client=client)

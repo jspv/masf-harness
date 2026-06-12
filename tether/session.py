@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import bundles as _bundles
-from .config import HarnessConfig, SandboxConfig
+from .config import TetherConfig, SandboxConfig
 from .handles import HandleStore
 from .sandbox import LocalSubprocessSandbox, SandboxExecutor
 from .status import StatusBus, StatusEvent, bind_bus
@@ -19,13 +19,13 @@ class Session:
     root: Path
     store: HandleStore
     sandbox: SandboxExecutor
-    config: HarnessConfig
+    config: TetherConfig
     _mcp_connected: list[Any] = field(default_factory=list, init=False, repr=False)
     status_bus: StatusBus = field(default_factory=StatusBus, init=False, repr=False)
     _status_cm: Any = field(default=None, init=False, repr=False)
 
     @classmethod
-    def create(cls, config: HarnessConfig) -> "Session":
+    def create(cls, config: TetherConfig) -> "Session":
         root = _resolve_root(config)
         root.mkdir(parents=True, exist_ok=True)
         store = HandleStore(root)
@@ -72,7 +72,7 @@ class Session:
         wanted = _bundles.tool_names_for(bundles)
         return [t for t in build_tools(self) if t.__name__ in wanted]
 
-    def harness_instructions(self, *bundles: str) -> str:
+    def tether_instructions(self, *bundles: str) -> str:
         """The operating-manual text (core + selected bundles)."""
         return _bundles.instructions_for(bundles)
 
@@ -89,7 +89,7 @@ class Session:
         """Build a MAF agent over the selected bundles plus developer tools/MCP.
 
         Plain callables are spill-wrapped; MCP servers are connected and their tools get
-        the spill parser (Task 5). Operational instructions ride in ``harness_instructions``.
+        the spill parser (Task 5). Operational instructions ride in ``tether_instructions``.
         """
         from agent_framework import create_harness_agent  # local: heavy dep, imported at call time
 
@@ -108,7 +108,7 @@ class Session:
         return create_harness_agent(
             client,
             name=name,
-            harness_instructions=self.harness_instructions(*bundles),
+            harness_instructions=self.tether_instructions(*bundles),
             agent_instructions=agent_instructions,
             tools=builtin + external,
             disable_todo=True,
@@ -156,10 +156,10 @@ class Session:
             shutil.rmtree(self.root)
 
 
-def _resolve_root(config: HarnessConfig) -> Path:
+def _resolve_root(config: TetherConfig) -> Path:
     if config.root_dir is not None:
         return Path(config.root_dir).resolve()
-    base = Path.cwd() / ".harness" / "sessions"
+    base = Path.cwd() / ".tether" / "sessions"
     base.mkdir(parents=True, exist_ok=True)
     existing = [int(p.name) for p in base.iterdir() if p.name.isdigit()]
     next_id = (max(existing) + 1) if existing else 1

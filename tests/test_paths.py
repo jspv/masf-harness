@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from harness.paths import PathEscapesRootError, safe_path
+from tether.paths import PathEscapesRootError, safe_path
 
 
 def test_simple_relative_path_resolves_under_root(tmp_path):

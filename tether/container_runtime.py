@@ -29,7 +29,7 @@ def detect_runtime(override: str | None, which: Callable[[str], str | None] = sh
             return candidate
     raise RuntimeError(
         "no container runtime found: install podman or docker, or set "
-        "HarnessConfig.sandbox.backend='local'"
+        "TetherConfig.sandbox.backend='local'"
     )
 
 
@@ -40,7 +40,7 @@ def _py_tag() -> str:
 def image_tag(preinstalled: tuple[str, ...]) -> str:
     """Stable image tag keyed by the Python version + the (order-independent) preinstalled set."""
     digest = hashlib.sha256((_py_tag() + "|" + ",".join(sorted(preinstalled))).encode()).hexdigest()
-    return f"harness-sandbox:{digest[:12]}"
+    return f"tether-sandbox:{digest[:12]}"
 
 
 def image_exists(runtime: str, tag: str, run: Callable = subprocess.run) -> bool:
@@ -63,7 +63,7 @@ def ensure_image(runtime: str, tag: str, config: SandboxConfig,
 
 def layer_dir(config: SandboxConfig, base: Path | None = None) -> Path:
     """Host cache dir for the provisioned package layer, keyed by packages + Python version."""
-    base = base or (Path.home() / ".harness" / "pkgcache")
+    base = base or (Path.home() / ".tether" / "pkgcache")
     digest = hashlib.sha256(
         (_py_tag() + "|" + ",".join(sorted(config.pip_packages))).encode()
     ).hexdigest()
@@ -102,7 +102,7 @@ def ensure_layer(runtime: str, config: SandboxConfig, base: Path | None = None,
 
 
 def _build_sandbox_main() -> None:
-    """Console-script entry (``harness-build-sandbox``): pre-build the sandbox image."""
+    """Console-script entry (``tether-build-sandbox``): pre-build the sandbox image."""
     from .config import SandboxConfig
 
     config = SandboxConfig()

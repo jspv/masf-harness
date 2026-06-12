@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from harness.handles import HandleStore
+from tether.handles import HandleStore
 
 
 def test_put_and_get_json_roundtrip(tmp_path):
@@ -117,7 +117,7 @@ def test_register_external_record_round_trips(tmp_path):
 
 
 def test_handle_store_rehydrates_manifest_and_counter(tmp_path):
-    from harness.handles import HandleStore
+    from tether.handles import HandleStore
     s1 = HandleStore(tmp_path)
     h1 = s1.put({"a": 1}, source="t")
     h2 = s1.put("hello", source="t")
@@ -131,7 +131,7 @@ def test_handle_store_rehydrates_manifest_and_counter(tmp_path):
 
 def test_rehydrate_skips_corrupt_record(tmp_path):
     import json
-    from harness.handles import HandleStore
+    from tether.handles import HandleStore
     HandleStore(tmp_path).put({"a": 1}, source="t")   # valid h1, persists manifest
     mf = tmp_path / "handles" / "_manifest.json"
     data = json.loads(mf.read_text())

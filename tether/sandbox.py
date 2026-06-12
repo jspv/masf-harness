@@ -120,7 +120,7 @@ class _OrchestratedSandbox:
                 try:
                     result = json.loads(emit_file.read_text(encoding="utf-8"))
                 except json.JSONDecodeError as e:
-                    emit_error = f"harness: malformed emit payload: {e}"
+                    emit_error = f"tether: malformed emit payload: {e}"
 
             # Ergonomic fallback: if the script neither emitted nor ended in an expression but
             # printed something, surface that so a model that just print()s an answer still gets one.
@@ -170,10 +170,10 @@ class LocalSubprocessSandbox(_OrchestratedSandbox):
             "PATH": _minimal_path(),
             "HOME": str(ctx.root),
             "TMPDIR": str(ctx.root),
-            "HARNESS_ROOT": str(ctx.root),
-            "HARNESS_REGISTRY": str(ctx.registry_file),
-            "HARNESS_NEW_HANDLES": str(ctx.new_handles_file),
-            "HARNESS_EMIT": str(ctx.emit_file),
+            "TETHER_ROOT": str(ctx.root),
+            "TETHER_REGISTRY": str(ctx.registry_file),
+            "TETHER_NEW_HANDLES": str(ctx.new_handles_file),
+            "TETHER_EMIT": str(ctx.emit_file),
             "PYTHONPATH": str(_RUNTIME_DIR),
         }
         try:
@@ -185,7 +185,7 @@ class LocalSubprocessSandbox(_OrchestratedSandbox):
             return _LaunchResult(proc.stdout, proc.stderr, proc.returncode)
         except subprocess.TimeoutExpired as e:
             return _LaunchResult(_as_text(e.stdout),
-                                 _as_text(e.stderr) + "\nharness: killed (timeout)",
+                                 _as_text(e.stderr) + "\ntether: killed (timeout)",
                                  -1, killed_by="timeout")
 
     def _limits(self):

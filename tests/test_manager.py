@@ -2,18 +2,18 @@ import asyncio
 
 import pytest
 
-from harness import HarnessConfig, Harness
-from harness.manager import SessionManager
-from harness.testing import StubChatClient, text
+from tether import TetherConfig, Tether
+from tether.manager import SessionManager
+from tether.testing import StubChatClient, text
 
 
-def _harness(tmp_path):
-    return Harness(HarnessConfig(root_dir=tmp_path / "base"), client=StubChatClient([text("x")]))
+def _tether(tmp_path):
+    return Tether(TetherConfig(root_dir=tmp_path / "base"), client=StubChatClient([text("x")]))
 
 
 def test_open_is_reuse_or_create_and_isolated_roots(tmp_path):
     async def run():
-        m = SessionManager(_harness(tmp_path))
+        m = SessionManager(_tether(tmp_path))
         a = await m.aopen("t1")
         a2 = await m.aopen("t1")          # same id -> same Conversation
         b = await m.aopen("t2")           # different id -> different Conversation + root
@@ -27,7 +27,7 @@ def test_open_is_reuse_or_create_and_isolated_roots(tmp_path):
 
 def test_get_and_close_are_idempotent(tmp_path):
     async def run():
-        m = SessionManager(_harness(tmp_path))
+        m = SessionManager(_tether(tmp_path))
         c = await m.aopen("t1")
         assert m.get("t1") is c
         await m.close("t1")
@@ -39,7 +39,7 @@ def test_get_and_close_are_idempotent(tmp_path):
 
 def test_lazy_ttl_expiry(tmp_path):
     async def run():
-        m = SessionManager(_harness(tmp_path), idle_ttl_s=60)
+        m = SessionManager(_tether(tmp_path), idle_ttl_s=60)
         c1 = await m.aopen("t1")
         c1.last_activity -= 1000          # simulate idle past the TTL
         assert m.get("t1") is None        # lazy expiry on get
@@ -54,7 +54,7 @@ def test_open_rejects_path_traversal_id(tmp_path):
     # An untrusted threadId must not escape the base via separators/.. — it would be rmtree'd on
     # close. The open fails closed (ValueError) before any workspace is created.
     async def run():
-        m = SessionManager(_harness(tmp_path))
+        m = SessionManager(_tether(tmp_path))
         for bad in ("../../../etc/evil", "a/b", "..", r"a\b"):
             with pytest.raises(ValueError):
                 await m.aopen(bad)
@@ -66,7 +66,7 @@ def test_open_rejects_path_traversal_id(tmp_path):
 
 def test_sweep_reaps_idle(tmp_path):
     async def run():
-        m = SessionManager(_harness(tmp_path), idle_ttl_s=60)
+        m = SessionManager(_tether(tmp_path), idle_ttl_s=60)
         c = await m.aopen("t1")
         c.last_activity -= 1000
         await m.sweep()

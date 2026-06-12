@@ -17,8 +17,8 @@ wheels/
 .pytest_cache/
 .ruff_cache/
 
-# Harness session artifacts
-.harness/
+# Tether session artifacts
+.tether/
 
 # Demo / eval run workspaces
 work/

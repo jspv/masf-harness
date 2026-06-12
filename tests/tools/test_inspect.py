@@ -1,12 +1,12 @@
 import pandas as pd
 import pytest
 
-from harness import HarnessConfig, Session
-from harness.tools.inspect import inspect_handle
+from tether import TetherConfig, Session
+from tether.tools.inspect import inspect_handle
 
 
 def _session(tmp_path):
-    return Session.create(HarnessConfig(root_dir=tmp_path / "r"))
+    return Session.create(TetherConfig(root_dir=tmp_path / "r"))
 
 
 def test_inspect_text_handle_returns_more_preview(tmp_path):

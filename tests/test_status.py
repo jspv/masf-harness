@@ -1,7 +1,7 @@
 import asyncio
 import threading
 
-from harness.status import StatusBus, StatusEvent, bind_bus, current_bus, report_progress
+from tether.status import StatusBus, StatusEvent, bind_bus, current_bus, report_progress
 
 
 def test_subscriber_receives_emitted_event():

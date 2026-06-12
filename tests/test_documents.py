@@ -1,11 +1,11 @@
-import harness.tools.documents as docmod
-from harness import HarnessConfig, Session
-from harness.config import DocumentConfig
-from harness.tools.documents import prefetch_models, read_document
+import tether.tools.documents as docmod
+from tether import TetherConfig, Session
+from tether.config import DocumentConfig
+from tether.tools.documents import prefetch_models, read_document
 
 
 def _session(tmp_path):
-    return Session.create(HarnessConfig(root_dir=tmp_path / "r"))
+    return Session.create(TetherConfig(root_dir=tmp_path / "r"))
 
 
 def test_path_source_converts_to_markdown_handle(tmp_path):
@@ -101,7 +101,7 @@ def test_default_converter_uses_config_ocr_off_by_default(tmp_path, monkeypatch)
 
 
 def test_default_converter_enables_ocr_when_configured(tmp_path, monkeypatch):
-    sess = Session.create(HarnessConfig(root_dir=tmp_path / "r", documents=DocumentConfig(ocr=True)))
+    sess = Session.create(TetherConfig(root_dir=tmp_path / "r", documents=DocumentConfig(ocr=True)))
     (sess.root / "f.pdf").write_bytes(b"x")
     captured = {}
     monkeypatch.setattr(docmod, "_docling_convert",

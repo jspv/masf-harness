@@ -1,4 +1,4 @@
-"""Public entry point: Harness / solve() returning a Result."""
+"""Public entry point: Tether / solve() returning a Result."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, AsyncIterator, Callable
 
-from .config import HarnessConfig
+from .config import TetherConfig
 from .status import StatusEvent
 
 if TYPE_CHECKING:
@@ -25,14 +25,14 @@ class Result:
     error: str | None = None
 
 
-class Harness:
-    """Reusable harness: builds a Session per run via the composable create_agent path."""
+class Tether:
+    """Reusable tether: builds a Session per run via the composable create_agent path."""
 
-    def __init__(self, config: HarnessConfig | None = None, client: Any | None = None,
+    def __init__(self, config: TetherConfig | None = None, client: Any | None = None,
                  *, tools: list | None = None,
                  bundles: tuple[str, ...] = ("code", "files", "web"),
                  on_status: _StatusSink | None = None) -> None:
-        self.config = config or HarnessConfig()
+        self.config = config or TetherConfig()
         self._client = client
         self._tools = tools or []
         self._bundles = bundles
@@ -85,7 +85,7 @@ class Harness:
         auto-allocated dir, so parallel ``solve``/``asolve`` calls are isolated. With a **pinned**
         ``root_dir`` they share that dir — and since the default reaps it on completion, concurrent
         one-shots on the same pinned root are unsafe (the first to finish deletes it mid-run). For
-        concurrent one-shots either leave ``root_dir`` unset or use a separate Harness per call.
+        concurrent one-shots either leave ``root_dir`` unset or use a separate Tether per call.
         """
         from .conversation import Conversation
 
@@ -128,7 +128,7 @@ class Harness:
 
 
 def solve(problem: str, *, tools: list | None = None,
-          config: HarnessConfig | None = None, client: Any | None = None,
+          config: TetherConfig | None = None, client: Any | None = None,
           on_status: _StatusSink | None = None, keep: bool = False) -> Result:
-    """One-shot convenience: build a Harness and solve a single problem (ephemeral unless keep)."""
-    return Harness(config, client=client, tools=tools, on_status=on_status).solve(problem, keep=keep)
+    """One-shot convenience: build a Tether and solve a single problem (ephemeral unless keep)."""
+    return Tether(config, client=client, tools=tools, on_status=on_status).solve(problem, keep=keep)

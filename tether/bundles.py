@@ -2,7 +2,7 @@
 
 The data substrate (handle store + spill + inspect_handle) is always-on CORE.
 ``code`` / ``files`` / ``web`` are opt-in layers. Each contributes (a) tool names
-and (b) a ``harness_instructions`` fragment the model reads to operate the tools.
+and (b) a ``tether_instructions`` fragment the model reads to operate the tools.
 """
 
 from __future__ import annotations

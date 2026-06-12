@@ -4,8 +4,8 @@ import pandas as pd
 import pytest
 from agent_framework._types import Content
 
-from harness import HarnessConfig, Session
-from harness.spill import (
+from tether import TetherConfig, Session
+from tether.spill import (
     SpillLimitExceeded,
     looks_like_mcp,
     make_spill_parser,
@@ -16,7 +16,7 @@ from harness.spill import (
 
 def _session(tmp_path, **cfg):
     cfg.setdefault("spill_threshold_bytes", 64)
-    return Session.create(HarnessConfig(root_dir=tmp_path / "r", **cfg))
+    return Session.create(TetherConfig(root_dir=tmp_path / "r", **cfg))
 
 
 def _as_text(parsed) -> str:

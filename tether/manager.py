@@ -43,23 +43,23 @@ class InMemoryConversationStore:
 
 
 def _conv_root(config: Any, conv_id: str) -> Path:
-    """Isolated per-conversation root. Uses config.root_dir as a base, else ./.harness/sessions.
+    """Isolated per-conversation root. Uses config.root_dir as a base, else ./.tether/sessions.
 
     ``conv_id`` may be untrusted (e.g. an AG-UI ``threadId``). It must name a *single* child of the
     base — a separator or ``..`` would let it nest under another conversation or escape the base
     entirely, and on close it would be ``rmtree``'d (see ``Conversation.aclose``). We reject
     separators up front and run the result through ``safe_path`` as a containment backstop.
     """
-    base = Path(config.root_dir) if config.root_dir else (Path.cwd() / ".harness" / "sessions")
+    base = Path(config.root_dir) if config.root_dir else (Path.cwd() / ".tether" / "sessions")
     if conv_id in ("", ".", "..") or "/" in conv_id or "\\" in conv_id:
         raise ValueError(f"invalid conversation id (no path separators allowed): {conv_id!r}")
     return safe_path(base, conv_id)
 
 
 class SessionManager:
-    def __init__(self, harness: Any, *, idle_ttl_s: float | None = None,
+    def __init__(self, tether: Any, *, idle_ttl_s: float | None = None,
                  store: ConversationStore | None = None) -> None:
-        self._harness = harness
+        self._tether = tether
         self._ttl = idle_ttl_s
         self._store: ConversationStore = store or InMemoryConversationStore()
         self._lock = asyncio.Lock()
@@ -86,11 +86,11 @@ class SessionManager:
                     await existing.aclose()
             conv_id = session_id or uuid.uuid4().hex
             config = dataclasses.replace(
-                self._harness.config, root_dir=str(_conv_root(self._harness.config, conv_id)))
+                self._tether.config, root_dir=str(_conv_root(self._tether.config, conv_id)))
             conv = await Conversation.acreate(
-                id=conv_id, config=config, client=self._harness._make_client(),
-                tools=self._harness._tools + (tools or []),
-                bundles=bundles if bundles is not None else self._harness._bundles,
+                id=conv_id, config=config, client=self._tether._make_client(),
+                tools=self._tether._tools + (tools or []),
+                bundles=bundles if bundles is not None else self._tether._bundles,
                 reap_on_close=True,
             )
             self._store.put(conv_id, conv)

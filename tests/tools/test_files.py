@@ -1,11 +1,11 @@
 import pytest
 
-from harness import HarnessConfig, PathEscapesRootError, Session
-from harness.tools.files import list_files, read_file, write_file
+from tether import TetherConfig, PathEscapesRootError, Session
+from tether.tools.files import list_files, read_file, write_file
 
 
 def _session(tmp_path):
-    return Session.create(HarnessConfig(root_dir=tmp_path / "r"))
+    return Session.create(TetherConfig(root_dir=tmp_path / "r"))
 
 
 def test_write_then_read_roundtrip(tmp_path):

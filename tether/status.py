@@ -1,11 +1,11 @@
-"""Tool status updates: a harness-owned side-band channel.
+"""Tool status updates: a tether-owned side-band channel.
 
 A tool calls ``report_progress(...)`` while it runs; the call routes through a
 ``contextvars`` lookup to the ``StatusBus`` the active ``Session`` bound for this run, which
-fans the event out to subscribers (e.g. a ``Harness(on_status=...)`` callback or the CLI
+fans the event out to subscribers (e.g. a ``Tether(on_status=...)`` callback or the CLI
 ``--verbose`` printer). Outside a bound run, ``report_progress`` is a no-op, so tools can
 call it unconditionally. This is a side-band channel: mid-tool and MCP progress are not part
-of MAF's response stream (which carries text deltas and tool-call lifecycle), so the harness
+of MAF's response stream (which carries text deltas and tool-call lifecycle), so the tether
 delivers them itself.
 """
 
@@ -20,12 +20,12 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Callable, Iterator
 
-_log = logging.getLogger("harness.status")
+_log = logging.getLogger("tether.status")
 
 
 @dataclass(frozen=True)
 class StatusEvent:
-    tool: str                       # emitting tool name, or "harness"
+    tool: str                       # emitting tool name, or "tether"
     message: str                    # human-readable status line
     current: float | None = None    # progress numerator (optional)
     total: float | None = None      # progress denominator (optional)
@@ -74,7 +74,7 @@ class StatusBus:
 
 
 _current: contextvars.ContextVar[StatusBus | None] = contextvars.ContextVar(
-    "harness_status_bus", default=None
+    "tether_status_bus", default=None
 )
 
 

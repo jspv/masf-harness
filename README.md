@@ -1,4 +1,4 @@
-# harness
+# tether
 
 > A reusable Python substrate for building autonomous data-gathering and data-integration agents — a single-agent-loop ("coding agent") harness on the [Microsoft Agent Framework](https://github.com/microsoft/agent-framework) (MAF).
 
@@ -79,10 +79,10 @@ uv sync --prerelease=allow --extra agui       # AG-UI / CopilotKit streaming
 Document ingestion uses [Docling](https://github.com/DS4SD/docling), which downloads its models on first use. To pay that cost up front (e.g. at deploy time) instead of on the first `read_document` call, prefetch them:
 
 ```bash
-harness-prefetch-docling          # add --ocr to also fetch OCR models (scanned documents)
+tether-prefetch-docling          # add --ocr to also fetch OCR models (scanned documents)
 ```
 
-OCR is **off by default** — born-digital PDFs/Office files get their tables and structure without it. Set `HarnessConfig.documents.ocr = True` for scanned/image documents.
+OCR is **off by default** — born-digital PDFs/Office files get their tables and structure without it. Set `TetherConfig.documents.ocr = True` for scanned/image documents.
 
 ### API keys
 
@@ -96,12 +96,12 @@ TAVILY_API_KEY=tvly-...      # optional — enables web_search / web_extract
 ### Quickstart: CLI
 
 ```bash
-uv run harness "What is the total EU revenue in 2025, excluding invalid rows?"
+uv run tether "What is the total EU revenue in 2025, excluding invalid rows?"
 ```
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `--model` | `gpt-5-mini` | Model for the built-in OpenAI client (reads `OPENAI_API_KEY`, or `AZURE_OPENAI_*` for Azure routing). The CLI uses that client; for other providers drive the harness from Python with your own client — see [Bring your own model client](#bring-your-own-model-client) |
+| `--model` | `gpt-5-mini` | Model for the built-in OpenAI client (reads `OPENAI_API_KEY`, or `AZURE_OPENAI_*` for Azure routing). The CLI uses that client; for other providers drive the tether from Python with your own client — see [Bring your own model client](#bring-your-own-model-client) |
 | `--root` | a fresh session dir | Workspace root (the confinement boundary) |
 | `-v`, `--verbose` | off | Print live tool status to stderr as the task runs (see [Live status updates](#live-status-updates)) |
 
@@ -110,21 +110,21 @@ The CLI prints the answer and leaves `[session: …]` — the directory holding 
 ### Quickstart: library
 
 ```python
-from harness import Harness, HarnessConfig, solve
+from tether import Tether, TetherConfig, solve
 
 # One-shot convenience
 result = solve("Summarize the latest figures from https://example.com/report.pdf")
 print(result.final_text)
 
-# Reusable harness with your own tools
+# Reusable tether with your own tools
 def query_sales(region: str) -> list[dict]:
     """Return sales rows for a region."""
     ...
 
-# With no client passed, the harness builds the default OpenAI client (reads OPENAI_API_KEY).
+# With no client passed, the tether builds the default OpenAI client (reads OPENAI_API_KEY).
 # `model` configures ONLY that default client — to use Azure / Foundry / any other provider,
 # pass your own MAF chat client (see "Bring your own model client"); `model` is then ignored.
-h = Harness(HarnessConfig(model="gpt-5-mini"))
+h = Tether(TetherConfig(model="gpt-5-mini"))
 result = h.solve(
     "Total EU revenue in 2025, excluding invalid rows?",
     tools=[query_sales],          # plain Python callables; auto-wrapped + spill-handled
@@ -146,7 +146,7 @@ The quickstarts above and the guides below are each worked examples. Two runnabl
 | Sample | Shows |
 |---|---|
 | [`examples/copilotkit/`](examples/copilotkit/) | **Full end-to-end app:** a CopilotKit chat UI + a FastAPI AG-UI backend with an **MCP server** wired in — ask a data question and watch the agent call the MCP tool, spill the result to a handle, and run sandboxed Python to answer |
-| [`examples/agui_server.py`](examples/agui_server.py) | The minimal AG-UI backend: a FastAPI endpoint that streams a harness run as SSE |
+| [`examples/agui_server.py`](examples/agui_server.py) | The minimal AG-UI backend: a FastAPI endpoint that streams a tether run as SSE |
 | [Use it as a MAF agent](#use-it-as-a-maf-agent) | Building and driving the agent with the ordinary MAF agent surface (`run` / streaming / threads / workflows) |
 | [Bring your own model client](#bring-your-own-model-client) | Injecting an Azure / Foundry / custom-auth chat client |
 | [Sessions: one-shot vs continuous](#sessions-one-shot-vs-continuous) | Persistent multi-turn conversations with a shared workspace |
@@ -162,12 +162,12 @@ The quickstarts above and the guides below are each worked examples. Two runnabl
 ```python
 import asyncio
 from agent_framework.openai import OpenAIChatClient
-from harness import Session, HarnessConfig
+from tether import Session, TetherConfig
 
 async def main():
-    # The two-step (open a workspace, then build the agent over it) is the only harness-specific
+    # The two-step (open a workspace, then build the agent over it) is the only tether-specific
     # part — it binds the agent to one session root + sandbox. The build call itself is standard MAF.
-    async with Session.create(HarnessConfig()) as session:
+    async with Session.create(TetherConfig()) as session:
         agent = await session.create_agent(
             OpenAIChatClient(model="gpt-5-mini", env_file_path=".env"),
             agent_instructions="Reconcile EU sales and flag anomalies.",  # your task prompt
@@ -175,7 +175,7 @@ async def main():
             bundles=("code", "files", "web"),  # which built-in tool families to include
         )
 
-        # `agent` is a MAF `Agent` — the usual interface, nothing harness-specific from here:
+        # `agent` is a MAF `Agent` — the usual interface, nothing tether-specific from here:
         reply = await agent.run("Which regions look anomalous?")
         print(reply.text)
 
@@ -194,11 +194,11 @@ Because the returned object is a standard MAF `Agent`, it composes anywhere a MA
 
 ### Bring your own model client
 
-The convenience entry points (`solve`, `Harness(...)` with no `client`) use MAF's OpenAI client by default — following [MAF's own Python convention](https://github.com/microsoft/agent-framework/blob/main/python/README.md) (`OPENAI_API_KEY` present → OpenAI). The harness is **not** OpenAI-only: it needs only an object implementing MAF's chat-client protocol (`SupportsChatGetResponse`), and never authenticates one for you when you supply it. The same client is reused across one-shots and every continuous conversation. Two injection points:
+The convenience entry points (`solve`, `Tether(...)` with no `client`) use MAF's OpenAI client by default — following [MAF's own Python convention](https://github.com/microsoft/agent-framework/blob/main/python/README.md) (`OPENAI_API_KEY` present → OpenAI). The tether is **not** OpenAI-only: it needs only an object implementing MAF's chat-client protocol (`SupportsChatGetResponse`), and never authenticates one for you when you supply it. The same client is reused across one-shots and every continuous conversation. Two injection points:
 
 ```python
 # High-level facade — your client flows to solve / aopen / agui_stream
-h = Harness(HarnessConfig(), client=my_client)
+h = Tether(TetherConfig(), client=my_client)
 
 # Composable path — pass it straight to create_agent
 agent = await session.create_agent(my_client, agent_instructions="…", tools=[…])
@@ -209,7 +209,7 @@ MAF's `OpenAIChatClient` already does Azure routing. For Azure with a **refreshi
 ```python
 from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 from agent_framework.openai import OpenAIChatClient
-from harness import Harness, HarnessConfig
+from tether import Tether, TetherConfig
 
 token_provider = get_bearer_token_provider(      # fresh bearer token per call → handles refresh
     DefaultAzureCredential(), "https://cognitiveservices.azure.com/.default")
@@ -220,24 +220,24 @@ client = OpenAIChatClient(
     credential=token_provider,
     model="my-gpt-5-deployment",                 # Azure deployment name
 )
-h = Harness(HarnessConfig(), client=client)      # config.model is ignored; the client carries it
+h = Tether(TetherConfig(), client=client)      # config.model is ignored; the client carries it
 ```
 
-If you already hold a fully-built MAF chat client (your own custom-auth Azure / Foundry / OpenAI-compatible client), skip all of the above and just pass it: `Harness(HarnessConfig(), client=that)`.
+If you already hold a fully-built MAF chat client (your own custom-auth Azure / Foundry / OpenAI-compatible client), skip all of the above and just pass it: `Tether(TetherConfig(), client=that)`.
 
 ### Sessions: one-shot vs continuous
 
-The harness serves both one-shot and continuous (multi-turn) interactions from any frontend.
+The tether serves both one-shot and continuous (multi-turn) interactions from any frontend.
 
 - **One-shot** (`solve`) is ephemeral — it runs and **cleans up its workspace** when done. Pass `keep=True` to retain the audit trail (`result.session_dir`).
 - **Continuous** keeps a persistent workspace (handles + sandbox files) and conversation history across turns, until you close it (or an optional idle TTL expires).
 
 ```python
 import asyncio
-from harness import Harness, HarnessConfig
+from tether import Tether, TetherConfig
 
 async def main():
-    h = Harness(HarnessConfig(idle_ttl_s=1800))     # idle conversations expire after 30 min (optional)
+    h = Tether(TetherConfig(idle_ttl_s=1800))     # idle conversations expire after 30 min (optional)
     conv = await h.aopen("thread-42")                # open or resume by id (e.g. an AG-UI threadId)
     print((await conv.aask("load sales.csv and summarize")).final_text)
     print((await conv.aask("now filter to EU")).final_text)   # sees the prior turn's handles + history
@@ -252,18 +252,18 @@ AG-UI hosts get this automatically — `agui_stream` maps each request's `thread
 
 ### MCP servers
 
-Pass a MAF `MCPTool` — stdio, Streamable-HTTP, or WebSocket — in the same `tools=[…]` list. The harness connects each server, **owns its lifecycle** (closing it when the run ends, even on error), and attaches the same spill handling to every tool the server exposes — so a large MCP return (a long message list, a big query result) lands as a clean typed handle instead of flooding context.
+Pass a MAF `MCPTool` — stdio, Streamable-HTTP, or WebSocket — in the same `tools=[…]` list. The tether connects each server, **owns its lifecycle** (closing it when the run ends, even on error), and attaches the same spill handling to every tool the server exposes — so a large MCP return (a long message list, a big query result) lands as a clean typed handle instead of flooding context.
 
 ```python
 from agent_framework import MCPStdioTool
-from harness import Harness, HarnessConfig
+from tether import Tether, TetherConfig
 
 # A stdio MCP server, launched however your other MCP clients launch it.
 # (If the server resolves its config/credentials relative to a directory, launch it
 #  from there, e.g. command="sh", args=["-c", "cd /path/to/server && exec uv run its-cmd"].)
 mcp = MCPStdioTool(name="msgraph", command="uv", args=["run", "msgraph-mcp"])
 
-h = Harness(HarnessConfig(model="gpt-5-mini"))
+h = Tether(TetherConfig(model="gpt-5-mini"))
 result = h.solve("List the subjects of my 5 most recent emails.", tools=[mcp])
 print(result.final_text)
 ```
@@ -290,7 +290,7 @@ MCP support needs the `mcp` SDK, which is a declared dependency, so `uv sync` al
 Tools report progress while they run, and you receive it through an `on_status` callback — from the built-in tools, from your own tools (via `report_progress`), and from MCP servers (their logging and progress notifications are captured automatically).
 
 ```python
-from harness import Harness, report_progress
+from tether import Tether, report_progress
 
 def crunch(n: int) -> str:
     """Your tool can report progress."""
@@ -302,40 +302,40 @@ def show(event):
     bar = f" [{event.current}/{event.total}]" if event.current is not None else ""
     print(f"→ {event.tool}: {event.message}{bar}")
 
-Harness(tools=[crunch], on_status=show).solve("crunch 5 items")
+Tether(tools=[crunch], on_status=show).solve("crunch 5 items")
 ```
 
 The CLI exposes the same feed with `-v`/`--verbose` (printed to stderr). MCP-server status needs no extra wiring — a server's `notifications/message` arrive tagged `mcp:<server>`, and its `notifications/progress` arrive tagged with the calling tool's name plus `current`/`total`.
 
 ### AG-UI and CopilotKit
 
-A harness run can drive an [AG-UI](https://docs.ag-ui.com/) client such as [CopilotKit](https://docs.copilotkit.ai/) — streamed answer text, live tool-call visibility, and the status feed above — all as AG-UI events. Install the optional extra:
+A tether run can drive an [AG-UI](https://docs.ag-ui.com/) client such as [CopilotKit](https://docs.copilotkit.ai/) — streamed answer text, live tool-call visibility, and the status feed above — all as AG-UI events. Install the optional extra:
 
 ```bash
 uv sync --prerelease=allow --extra agui
 ```
 
-`Harness.agui_stream(input_data)` yields AG-UI events for one request; encode them as SSE from your endpoint:
+`Tether.agui_stream(input_data)` yields AG-UI events for one request; encode them as SSE from your endpoint:
 
 ```python
 from ag_ui.encoder import EventEncoder
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
-from harness import Harness
+from tether import Tether
 
-app, harness = FastAPI(), Harness()
+app, tether = FastAPI(), Tether()
 
 @app.post("/agent")
 async def agent(request: Request):
     input_data = await request.json()                 # AG-UI RunAgentInput
     encoder = EventEncoder()
     async def sse():
-        async for event in harness.agui_stream(input_data):
+        async for event in tether.agui_stream(input_data):
             yield encoder.encode(event)
     return StreamingResponse(sse(), media_type="text/event-stream")
 ```
 
-Point your AG-UI client at this endpoint. The harness reuses the official `agent-framework-ag-ui` converter, so **frontend/generative-UI tools** (defined in the request), **shared state** (`state_schema`/`predict_state_config`, forwarded as keyword args to `agui_stream`), **human-in-the-loop**, and **multi-turn history** all work — with the harness's own progress feed overlaid as `harness.status` `CUSTOM` events. A runnable version is in [`examples/agui_server.py`](examples/agui_server.py).
+Point your AG-UI client at this endpoint. The tether reuses the official `agent-framework-ag-ui` converter, so **frontend/generative-UI tools** (defined in the request), **shared state** (`state_schema`/`predict_state_config`, forwarded as keyword args to `agui_stream`), **human-in-the-loop**, and **multi-turn history** all work — with the tether's own progress feed overlaid as `tether.status` `CUSTOM` events. A runnable version is in [`examples/agui_server.py`](examples/agui_server.py).
 
 ## Reference
 
@@ -363,32 +363,32 @@ Every session has one **root directory**; everything — handles, agent-written 
 - **Layer 1 — Tool path-jail (guaranteed).** All model-supplied paths route through one chokepoint, `safe_path(root, p)`, which resolves symlinks *before* checking and rejects any path outside the root (blocks `..`, absolute paths, symlink escapes). It's the most heavily tested code in the project.
 - **Layer 2 — Executed code.** On the default `local` tier, `run_python` runs in a subprocess with `cwd=root`, a scrubbed environment, `resource` rlimits (CPU, memory, file size) and a wall-clock timeout (best-effort isolation). For real isolation, switch to the `container` tier — see [Sandbox tiers](#sandbox-tiers).
 
-> The **container tier** provides real isolation: set `HarnessConfig.sandbox.backend = "container"` to run `run_python` in a hardened Podman/Docker container — network off by default, read-only root filesystem, dropped capabilities, non-root, and memory/cpu/pid limits — behind the same `SandboxExecutor` interface (no other harness code changes).
+> The **container tier** provides real isolation: set `TetherConfig.sandbox.backend = "container"` to run `run_python` in a hardened Podman/Docker container — network off by default, read-only root filesystem, dropped capabilities, non-root, and memory/cpu/pid limits — behind the same `SandboxExecutor` interface (no other tether code changes).
 
 ### Sandbox tiers
 
-`run_python` executes model-authored code; two backends are chosen by `HarnessConfig.sandbox.backend`.
+`run_python` executes model-authored code; two backends are chosen by `TetherConfig.sandbox.backend`.
 
 - **`local`** (default) — a scrubbed-env subprocess with `resource` rlimits, a wall-clock timeout, and the path-jail. Fast, no dependencies; best-effort isolation.
 - **`container`** — runs the code in a hardened OCI container (Podman preferred, Docker supported; auto-detected). Network **off by default**, read-only root filesystem, `--cap-drop ALL`, non-root, and memory/cpu/pid limits. The session root is bind-mounted to `/workspace`, so handles round-trip exactly as in the local tier.
 
 ```python
-from harness import Harness, HarnessConfig
-from harness.config import SandboxConfig
+from tether import Tether, TetherConfig
+from tether.config import SandboxConfig
 
-cfg = HarnessConfig(sandbox=SandboxConfig(
+cfg = TetherConfig(sandbox=SandboxConfig(
     backend="container",
     network=False,                 # opt-in with True if sandbox code must reach the network
     pip_packages=("rich",),        # provisioned into a mounted layer (network only during provisioning)
 ))
-Harness(cfg).solve("…")
+Tether(cfg).solve("…")
 ```
 
-The image (Python + `preinstalled` libraries) is **built automatically on first use** and cached; run `harness-build-sandbox` to pre-build it in CI/deploy. Notes: on macOS the runtime runs in a Linux VM, so the session root must sit under a VM-shared path (the default `~/.harness/...` is); the container tier does not enforce `max_file_size_mb` (memory/pid/cpu/network are enforced instead).
+The image (Python + `preinstalled` libraries) is **built automatically on first use** and cached; run `tether-build-sandbox` to pre-build it in CI/deploy. Notes: on macOS the runtime runs in a Linux VM, so the session root must sit under a VM-shared path (the default `~/.tether/...` is); the container tier does not enforce `max_file_size_mb` (memory/pid/cpu/network are enforced instead).
 
 ### Configuration
 
-`HarnessConfig` (see `harness/config.py`) is a plain dataclass:
+`TetherConfig` (see `tether/config.py`) is a plain dataclass:
 
 | Field | Default | Notes |
 |---|---|---|
@@ -397,7 +397,7 @@ The image (Python + `preinstalled` libraries) is **built automatically on first 
 | `max_spill_bytes` | `100 MiB` | Upper edge: a return larger than this is **rejected loudly** (`SpillLimitExceeded`), never silently stored |
 | `max_context_window_tokens` | `128_000` | Fed to MAF compaction |
 | `max_output_tokens` | `4096` | |
-| `root_dir` | `None` | `None` → a session dir under `./.harness/sessions/` |
+| `root_dir` | `None` | `None` → a session dir under `./.tether/sessions/` |
 | `idle_ttl_s` | `None` | Continuous-session idle TTL; `None` → never expire |
 | `sandbox` | `SandboxConfig()` | `backend` (local/container), timeout, limits, network, `pip_packages`, preinstalled libs |
 | `fetch` | `FetchConfig()` | `max_bytes`, timeout, allowed URL schemes |
@@ -411,15 +411,15 @@ uv run pytest          # full suite — no network or API keys required
 uv run ruff check .
 ```
 
-Testing is a first-class principle: **tests are written before implementation for every unit** (TDD). The fast suite runs deterministically against a stub chat client (no API cost); live tests are gated behind `HARNESS_LIVE=1`. `safe_path` and the spill logic are held to the highest bar.
+Testing is a first-class principle: **tests are written before implementation for every unit** (TDD). The fast suite runs deterministically against a stub chat client (no API cost); live tests are gated behind `TETHER_LIVE=1`. `safe_path` and the spill logic are held to the highest bar.
 
 Design specs and phased implementation plans for each feature live under [`docs/superpowers/`](docs/superpowers/).
 
 ## Project layout
 
 ```
-harness/
-  config.py      HarnessConfig / SandboxConfig / FetchConfig / SearchConfig
+tether/
+  config.py      TetherConfig / SandboxConfig / FetchConfig / SearchConfig
   paths.py       safe_path() — the single security chokepoint
   handles.py     Handle + HandleStore (json / text / dataframe persistence)
   sandbox.py     SandboxExecutor protocol + LocalSubprocessSandbox
@@ -433,7 +433,7 @@ harness/
   bundles.py     capability bundles (code / files / web) + their instructions
   tools/         the agent's tools (files, search, fetch, code, inspect, web)
   runtime/       in-sandbox helpers (load/save/emit)
-  api.py         Harness / solve() / Result
+  api.py         Tether / solve() / Result
   cli.py         thin streaming CLI
 docs/superpowers/  design specs + phased implementation plans
 examples/          runnable samples (minimal AG-UI server; full CopilotKit + MCP app)
@@ -443,7 +443,7 @@ tests/             mirror of the package (unit + integration + security tests)
 
 ## Roadmap
 
-**Implemented:** foundation (handles, sandbox, path-jail); the agent loop + tool surface; the `Harness`/`solve()` API + CLI; web research (Tavily search/extract, Markdown fetch); **document ingestion** (`read_document` via Docling — PDF/spreadsheet → Markdown with tables); **live status updates** (built-in, developer, and MCP tools → an `on_status` feed / `--verbose`); an **AG-UI / CopilotKit** integration (`Harness.agui_stream`); a **container sandbox tier** (hardened Podman/Docker isolation behind `SandboxExecutor`); and a **session lifecycle** model (ephemeral one-shot `solve`; persistent continuous `aopen`/`aask`/`aclose` with optional idle TTL).
+**Implemented:** foundation (handles, sandbox, path-jail); the agent loop + tool surface; the `Tether`/`solve()` API + CLI; web research (Tavily search/extract, Markdown fetch); **document ingestion** (`read_document` via Docling — PDF/spreadsheet → Markdown with tables); **live status updates** (built-in, developer, and MCP tools → an `on_status` feed / `--verbose`); an **AG-UI / CopilotKit** integration (`Tether.agui_stream`); a **container sandbox tier** (hardened Podman/Docker isolation behind `SandboxExecutor`); and a **session lifecycle** model (ephemeral one-shot `solve`; persistent continuous `aopen`/`aask`/`aclose` with optional idle TTL).
 
 **Planned** (documented under [`docs/superpowers/`](docs/superpowers/)):
 

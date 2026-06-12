@@ -13,7 +13,7 @@ import shutil
 import time
 from typing import TYPE_CHECKING, Any
 
-from .config import HarnessConfig
+from .config import TetherConfig
 from .session import Session
 
 if TYPE_CHECKING:
@@ -33,7 +33,7 @@ class Conversation:
         self._closed = False
 
     @classmethod
-    async def acreate(cls, *, id: str, config: HarnessConfig, client: Any,
+    async def acreate(cls, *, id: str, config: TetherConfig, client: Any,
                       tools: list | None = None, bundles: tuple[str, ...] = ("code", "files", "web"),
                       reap_on_close: bool = True) -> "Conversation":
         """Open the workspace, build the agent once, start a MAF conversation thread."""

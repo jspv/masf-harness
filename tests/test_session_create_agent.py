@@ -1,11 +1,11 @@
 import asyncio
 
-from harness import HarnessConfig, Session
-from harness.testing import StubChatClient, text, tool_call
+from tether import TetherConfig, Session
+from tether.testing import StubChatClient, text, tool_call
 
 
 def test_create_agent_spills_developer_tool_return(tmp_path):
-    cfg = HarnessConfig(root_dir=tmp_path / "r", spill_threshold_bytes=64)
+    cfg = TetherConfig(root_dir=tmp_path / "r", spill_threshold_bytes=64)
 
     def fetch_big(n: int) -> dict:
         """Return a big payload that must not flood the context."""
@@ -33,7 +33,7 @@ def test_create_agent_spills_developer_tool_return(tmp_path):
 
 
 def test_create_agent_exposes_selected_bundle_tools(tmp_path):
-    cfg = HarnessConfig(root_dir=tmp_path / "r")
+    cfg = TetherConfig(root_dir=tmp_path / "r")
     client = StubChatClient([text("hi")])
 
     async def run():
@@ -41,7 +41,7 @@ def test_create_agent_exposes_selected_bundle_tools(tmp_path):
             agent = await sess.create_agent(
                 client, agent_instructions="x", tools=[], bundles=("files",),
             )
-            # the harness instructions for the files bundle reached the agent
+            # the tether instructions for the files bundle reached the agent
             return agent
 
     agent = asyncio.run(run())

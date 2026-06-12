@@ -1,7 +1,7 @@
 """ContainerSandbox: run agent code in a hardened OCI container (podman/docker).
 
 Reuses the shared orchestration in ``_OrchestratedSandbox`` (control files, ExecResult parsing)
-and only differs in ``_launch``: it bind-mounts the session root at /workspace and the harness
+and only differs in ``_launch``: it bind-mounts the session root at /workspace and the tether
 runtime/ at /runtime (read-only), translates the control-file paths into the container, and runs
 ``python /runtime/_runner.py <script-rel> <args>`` with network off (by default), a read-only
 root filesystem, dropped capabilities, and memory/cpu/pid limits.
@@ -58,10 +58,10 @@ class ContainerSandbox(_OrchestratedSandbox):
             argv += ["-v", f"{layer}:/pkgs:ro"]
             pythonpath = "/runtime:/pkgs"
         env = {
-            "HARNESS_ROOT": "/workspace",
-            "HARNESS_REGISTRY": f"/workspace/{ctx.registry_file.name}",
-            "HARNESS_NEW_HANDLES": f"/workspace/{ctx.new_handles_file.name}",
-            "HARNESS_EMIT": f"/workspace/{ctx.emit_file.name}",
+            "TETHER_ROOT": "/workspace",
+            "TETHER_REGISTRY": f"/workspace/{ctx.registry_file.name}",
+            "TETHER_NEW_HANDLES": f"/workspace/{ctx.new_handles_file.name}",
+            "TETHER_EMIT": f"/workspace/{ctx.emit_file.name}",
             "PYTHONPATH": pythonpath,
             "HOME": "/workspace",
             "TMPDIR": "/tmp",
@@ -87,5 +87,5 @@ class ContainerSandbox(_OrchestratedSandbox):
             return _LaunchResult(proc.stdout, proc.stderr, proc.returncode, killed_by=killed_by)
         except subprocess.TimeoutExpired as e:
             return _LaunchResult(_as_text(e.stdout),
-                                 _as_text(e.stderr) + "\nharness: killed (timeout)",
+                                 _as_text(e.stderr) + "\ntether: killed (timeout)",
                                  -1, killed_by="timeout")

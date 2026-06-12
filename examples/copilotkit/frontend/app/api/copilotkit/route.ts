@@ -1,10 +1,10 @@
 // CopilotKit runtime route (Next.js App Router).
 //
 // The browser calls this same-origin endpoint; the runtime forwards each request
-// to the harness AG-UI backend via an HttpAgent. Because the proxy runs here on
+// to the tether AG-UI backend via an HttpAgent. Because the proxy runs here on
 // the server, no CORS configuration is needed on the Python backend.
 //
-// ExperimentalEmptyAdapter is the no-op service adapter: the harness agent does
+// ExperimentalEmptyAdapter is the no-op service adapter: the tether agent does
 // its own LLM calls, so the CopilotKit runtime needs no model service of its own.
 
 import {
@@ -22,8 +22,8 @@ const serviceAdapter = new ExperimentalEmptyAdapter();
 const runtime = new CopilotRuntime({
   agents: {
     // This key must match the `agent` prop on <CopilotKit> in app/layout.tsx.
-    harness: new HttpAgent({
-      url: process.env.HARNESS_AGENT_URL ?? "http://localhost:8000/agent",
+    tether: new HttpAgent({
+      url: process.env.TETHER_AGENT_URL ?? "http://localhost:8000/agent",
     }),
   },
 });

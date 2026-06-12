@@ -1,10 +1,10 @@
-"""Injected into the sandbox subprocess as the top-level module ``harness_sandbox``.
+"""Injected into the sandbox subprocess as the top-level module ``tether_sandbox``.
 
-Communicates with the parent harness only via env vars and files:
-  HARNESS_ROOT         session root directory
-  HARNESS_REGISTRY     json file: { handle_id: {kind, path} } for existing handles
-  HARNESS_NEW_HANDLES  jsonl file this module appends new-handle records to
-  HARNESS_EMIT         json file this module writes the emit() payload to
+Communicates with the parent tether only via env vars and files:
+  TETHER_ROOT         session root directory
+  TETHER_REGISTRY     json file: { handle_id: {kind, path} } for existing handles
+  TETHER_NEW_HANDLES  jsonl file this module appends new-handle records to
+  TETHER_EMIT         json file this module writes the emit() payload to
 """
 
 from __future__ import annotations
@@ -14,10 +14,10 @@ import os
 from pathlib import Path
 from typing import Any
 
-_ROOT = Path(os.environ["HARNESS_ROOT"])
-_REGISTRY = json.loads(Path(os.environ["HARNESS_REGISTRY"]).read_text(encoding="utf-8"))
-_NEW = Path(os.environ["HARNESS_NEW_HANDLES"])
-_EMIT = Path(os.environ["HARNESS_EMIT"])
+_ROOT = Path(os.environ["TETHER_ROOT"])
+_REGISTRY = json.loads(Path(os.environ["TETHER_REGISTRY"]).read_text(encoding="utf-8"))
+_NEW = Path(os.environ["TETHER_NEW_HANDLES"])
+_EMIT = Path(os.environ["TETHER_EMIT"])
 
 _PREVIEW_CHARS = 800
 _PREVIEW_ROWS = 5
@@ -44,7 +44,7 @@ def save(handle_id: str, obj: Any, source: str = "run_python") -> str:
         rel = f"handles/{handle_id}.parquet"
         obj.to_parquet(_ROOT / rel)
         # Preview must match HandleStore._write_dataframe exactly (kept in sync by hand;
-        # the child cannot import the harness package). See tests for parity check.
+        # the child cannot import the tether package). See tests for parity check.
         preview = obj.head(_PREVIEW_ROWS).to_csv(index=False)
         if len(obj) > _PREVIEW_ROWS:
             preview += f"... ({_PREVIEW_ROWS} of {len(obj)} rows)"

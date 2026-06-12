@@ -1,16 +1,16 @@
 import httpx
 
-from harness import HarnessConfig, Session
-from harness.spill import make_spill_parser
-from harness.status import StatusBus, bind_bus
-from harness.tools.code import run_python
-from harness.tools.documents import read_document
-from harness.tools.fetch import fetch_url
-from harness.tools.web import web_extract, web_search
+from tether import TetherConfig, Session
+from tether.spill import make_spill_parser
+from tether.status import StatusBus, bind_bus
+from tether.tools.code import run_python
+from tether.tools.documents import read_document
+from tether.tools.fetch import fetch_url
+from tether.tools.web import web_extract, web_search
 
 
 def _session(tmp_path):
-    return Session.create(HarnessConfig(root_dir=tmp_path / "r", spill_threshold_bytes=64))
+    return Session.create(TetherConfig(root_dir=tmp_path / "r", spill_threshold_bytes=64))
 
 
 def _collect():
@@ -33,7 +33,7 @@ def test_run_python_emits_running_status(tmp_path):
     sess = _session(tmp_path)
     bus, events = _collect()
     with bind_bus(bus):
-        run_python(sess, code="from harness_sandbox import emit\nemit(1)\n")
+        run_python(sess, code="from tether_sandbox import emit\nemit(1)\n")
     assert any(e.tool == "run_python" for e in events)
 
 

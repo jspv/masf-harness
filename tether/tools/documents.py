@@ -91,11 +91,11 @@ def prefetch_models(downloader: Callable[..., object] | None = None, *, ocr: boo
 
 
 def _prefetch_main() -> None:
-    """Console-script entry (``harness-prefetch-docling``): warm the Docling model cache."""
+    """Console-script entry (``tether-prefetch-docling``): warm the Docling model cache."""
     import argparse
 
     parser = argparse.ArgumentParser(
-        prog="harness-prefetch-docling",
+        prog="tether-prefetch-docling",
         description="Pre-download Docling models so the first read_document call is fast.",
     )
     parser.add_argument("--ocr", action="store_true",

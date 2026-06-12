@@ -1,12 +1,12 @@
 import pytest
 
-from harness import HarnessConfig, PathEscapesRootError, Session
-from harness.tools.files import write_file
-from harness.tools.search import _search_python, search
+from tether import TetherConfig, PathEscapesRootError, Session
+from tether.tools.files import write_file
+from tether.tools.search import _search_python, search
 
 
 def _session(tmp_path):
-    return Session.create(HarnessConfig(root_dir=tmp_path / "r"))
+    return Session.create(TetherConfig(root_dir=tmp_path / "r"))
 
 
 def _seed(sess):
@@ -62,7 +62,7 @@ def test_python_fallback_matches_directly(tmp_path):
 def test_rg_and_python_backends_agree(tmp_path):
     # The two backends must return identical results (guards env-dependent drift):
     # one hit per matching line, char-offset col, same text.
-    from harness.tools.files import write_file
+    from tether.tools.files import write_file
 
     sess = _session(tmp_path)
     write_file(sess, "p.txt", "xx xx xx\naaé match here\nnothing\nxx again\n")
@@ -81,7 +81,7 @@ def test_rg_and_python_backends_agree(tmp_path):
 def test_long_matching_line_is_clipped(tmp_path):
     # Minified-HTML style: a single enormous line. The hit text must be bounded so a
     # search result can't flood the model context.
-    from harness.tools.files import write_file
+    from tether.tools.files import write_file
 
     sess = _session(tmp_path)
     write_file(sess, "min.html", "x" * 100_000 + "NEEDLE" + "y" * 100_000)
@@ -93,7 +93,7 @@ def test_long_matching_line_is_clipped(tmp_path):
 
 
 def test_one_hit_per_line_even_with_multiple_matches(tmp_path):
-    from harness.tools.files import write_file
+    from tether.tools.files import write_file
 
     sess = _session(tmp_path)
     write_file(sess, "m.txt", "xx xx xx\n")
@@ -101,7 +101,7 @@ def test_one_hit_per_line_even_with_multiple_matches(tmp_path):
 
 
 def test_invalid_regex_raises_valueerror(tmp_path):
-    from harness.tools.files import write_file
+    from tether.tools.files import write_file
 
     sess = _session(tmp_path)
     write_file(sess, "a.txt", "hello\n")

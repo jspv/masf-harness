@@ -1,10 +1,10 @@
-"""AG-UI adapter: run the harness as an AG-UI event stream, overlaying StatusBus events.
+"""AG-UI adapter: run the tether as an AG-UI event stream, overlaying StatusBus events.
 
 The official ``agent-framework-ag-ui`` package already maps a streaming MAF agent to AG-UI
-events (text, tool calls, frontend tools, state, HITL). We reuse it and *overlay* the harness's
+events (text, tool calls, frontend tools, state, HITL). We reuse it and *overlay* the tether's
 own ``StatusBus`` -- mid-tool progress and MCP logging/progress that the official converter does
 not carry -- as ``CustomEvent``s. ``agent-framework-ag-ui`` is an optional extra; this module
-imports it (and ``ag_ui``) lazily so the harness core never depends on it.
+imports it (and ``ag_ui``) lazily so the tether core never depends on it.
 """
 
 from __future__ import annotations
@@ -16,14 +16,14 @@ from .status import StatusBus, StatusEvent
 
 
 def status_to_agui(event: StatusEvent) -> Any:
-    """Map a StatusEvent to an AG-UI ``CustomEvent(name="harness.status", value=...)``.
+    """Map a StatusEvent to an AG-UI ``CustomEvent(name="tether.status", value=...)``.
 
     Lazily imports ``ag_ui`` so importing this module does not require the agui extra.
     """
     from ag_ui.core import CustomEvent
 
     return CustomEvent(
-        name="harness.status",
+        name="tether.status",
         value={"tool": event.tool, "message": event.message,
                "current": event.current, "total": event.total},
     )

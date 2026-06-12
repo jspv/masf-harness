@@ -1,37 +1,37 @@
 import asyncio
 
-from harness.config import HarnessConfig
-from harness.session import Session
-from harness.status import report_progress
+from tether.config import TetherConfig
+from tether.session import Session
+from tether.status import report_progress
 
 
 def test_session_creates_root_under_default_location(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    sess = Session.create(HarnessConfig())
+    sess = Session.create(TetherConfig())
     assert sess.root.exists()
     assert sess.root.is_dir()
-    assert ".harness/sessions" in str(sess.root)
+    assert ".tether/sessions" in str(sess.root)
     sess.cleanup()
 
 
 def test_session_uses_explicit_root_dir(tmp_path):
-    cfg = HarnessConfig(root_dir=tmp_path / "myroot")
+    cfg = TetherConfig(root_dir=tmp_path / "myroot")
     sess = Session.create(cfg)
     assert sess.root == (tmp_path / "myroot").resolve()
     assert sess.root.exists()
 
 
 def test_session_wires_store_and_sandbox_to_same_root(tmp_path):
-    sess = Session.create(HarnessConfig(root_dir=tmp_path / "r"))
+    sess = Session.create(TetherConfig(root_dir=tmp_path / "r"))
     assert sess.store.root == sess.root
     assert sess.sandbox.root == sess.root
 
 
 def test_session_end_to_end_handle_then_analyze(tmp_path):
-    sess = Session.create(HarnessConfig(root_dir=tmp_path / "r"))
+    sess = Session.create(TetherConfig(root_dir=tmp_path / "r"))
     h = sess.store.put({"values": [120, 95, 0, 210]}, source="tool:read")
     code = (
-        "from harness_sandbox import load, emit\n"
+        "from tether_sandbox import load, emit\n"
         f"d = load('{h.id}')\n"
         "vals = [v for v in d['values'] if v > 0]\n"
         "emit({'total': sum(vals), 'dropped': len(d['values']) - len(vals)})\n"
@@ -41,7 +41,7 @@ def test_session_end_to_end_handle_then_analyze(tmp_path):
 
 
 def test_cleanup_removes_root_when_owned(tmp_path):
-    cfg = HarnessConfig(root_dir=tmp_path / "r")
+    cfg = TetherConfig(root_dir=tmp_path / "r")
     sess = Session.create(cfg)
     assert sess.root.exists()
     sess.cleanup()
@@ -49,9 +49,9 @@ def test_cleanup_removes_root_when_owned(tmp_path):
 
 
 def test_session_handles_and_artifacts(tmp_path):
-    from harness import HarnessConfig, Session
+    from tether import TetherConfig, Session
 
-    sess = Session.create(HarnessConfig(root_dir=tmp_path / "r"))
+    sess = Session.create(TetherConfig(root_dir=tmp_path / "r"))
     (sess.root / "report.txt").write_text("hi")
     (sess.root / ".scripts").mkdir(exist_ok=True)
     (sess.root / ".scripts" / "x.py").write_text("# scratch")
@@ -64,10 +64,10 @@ def test_session_handles_and_artifacts(tmp_path):
 
 
 def test_session_async_context_manager_cleanup(tmp_path):
-    from harness import HarnessConfig, Session
+    from tether import TetherConfig, Session
 
     async def run():
-        cfg = HarnessConfig(root_dir=tmp_path / "r", cleanup=True)
+        cfg = TetherConfig(root_dir=tmp_path / "r", cleanup=True)
         async with Session.create(cfg) as sess:
             root = sess.root
             assert root.exists()
@@ -78,10 +78,10 @@ def test_session_async_context_manager_cleanup(tmp_path):
 
 
 def test_session_async_context_manager_no_cleanup_by_default(tmp_path):
-    from harness import HarnessConfig, Session
+    from tether import TetherConfig, Session
 
     async def run():
-        cfg = HarnessConfig(root_dir=tmp_path / "r")  # cleanup defaults to False
+        cfg = TetherConfig(root_dir=tmp_path / "r")  # cleanup defaults to False
         async with Session.create(cfg) as sess:
             root = sess.root
             assert root.exists()
@@ -94,7 +94,7 @@ def test_session_async_context_manager_no_cleanup_by_default(tmp_path):
 def test_session_subscribe_receives_events_within_async_context(tmp_path):
     async def run():
         got = []
-        async with Session.create(HarnessConfig(root_dir=tmp_path / "r")) as session:
+        async with Session.create(TetherConfig(root_dir=tmp_path / "r")) as session:
             session.subscribe(got.append)
             report_progress("inside the run", tool="x")   # bus is bound by __aenter__
         return got
@@ -106,7 +106,7 @@ def test_session_subscribe_receives_events_within_async_context(tmp_path):
 
 def test_report_progress_is_noop_outside_async_context(tmp_path):
     # Session.create without `async with` does NOT bind the bus.
-    session = Session.create(HarnessConfig(root_dir=tmp_path / "r2"))
+    session = Session.create(TetherConfig(root_dir=tmp_path / "r2"))
     got = []
     session.subscribe(got.append)
     report_progress("nobody bound")                       # no-op
@@ -114,27 +114,27 @@ def test_report_progress_is_noop_outside_async_context(tmp_path):
 
 
 def test_session_selects_container_backend(tmp_path, monkeypatch):
-    from harness.config import HarnessConfig, SandboxConfig
-    from harness.sandbox import LocalSubprocessSandbox
-    from harness.sandbox_container import ContainerSandbox
+    from tether.config import TetherConfig, SandboxConfig
+    from tether.sandbox import LocalSubprocessSandbox
+    from tether.sandbox_container import ContainerSandbox
 
     # default -> local
-    s_local = Session.create(HarnessConfig(root_dir=tmp_path / "a"))
+    s_local = Session.create(TetherConfig(root_dir=tmp_path / "a"))
     assert isinstance(s_local.sandbox, LocalSubprocessSandbox)
 
     # backend="container" -> ContainerSandbox (patch detect_runtime so no podman/docker needed)
-    import harness.container_runtime as cr
+    import tether.container_runtime as cr
     monkeypatch.setattr(cr, "detect_runtime", lambda override, **kw: "podman")
-    cfg = HarnessConfig(root_dir=tmp_path / "b", sandbox=SandboxConfig(backend="container"))
+    cfg = TetherConfig(root_dir=tmp_path / "b", sandbox=SandboxConfig(backend="container"))
     s_cont = Session.create(cfg)
     assert isinstance(s_cont.sandbox, ContainerSandbox)
 
 
 def test_session_unbinds_bus_on_exit(tmp_path):
-    from harness.status import current_bus
+    from tether.status import current_bus
 
     async def run():
-        async with Session.create(HarnessConfig(root_dir=tmp_path / "r3")):
+        async with Session.create(TetherConfig(root_dir=tmp_path / "r3")):
             assert current_bus() is not None
         assert current_bus() is None
 

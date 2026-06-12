@@ -1,8 +1,8 @@
-from harness.config import FetchConfig, HarnessConfig, SandboxConfig
+from tether.config import FetchConfig, TetherConfig, SandboxConfig
 
 
 def test_defaults_are_sensible():
-    cfg = HarnessConfig()
+    cfg = TetherConfig()
     assert cfg.model == "gpt-5-mini"
     assert cfg.spill_threshold_bytes == 8192
     assert cfg.max_spill_bytes == 100 * 1024 * 1024
@@ -16,7 +16,7 @@ def test_defaults_are_sensible():
 
 
 def test_sandbox_backend_defaults_and_container_fields():
-    cfg = HarnessConfig()
+    cfg = TetherConfig()
     assert cfg.sandbox.backend == "local"            # default backend
     assert cfg.sandbox.network is False              # network off by default
     assert cfg.sandbox.pip_packages == ()
@@ -26,6 +26,6 @@ def test_sandbox_backend_defaults_and_container_fields():
 
 
 def test_nested_configs_are_independent_between_instances():
-    a = HarnessConfig()
-    b = HarnessConfig()
+    a = TetherConfig()
+    b = TetherConfig()
     assert a.sandbox is not b.sandbox  # field(default_factory=...) not shared

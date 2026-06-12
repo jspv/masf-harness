@@ -1,12 +1,12 @@
 import asyncio
 
-from harness import HarnessConfig, Harness, report_progress
-from harness.testing import StubChatClient, text, tool_call
+from tether import TetherConfig, Tether, report_progress
+from tether.testing import StubChatClient, text, tool_call
 
 
 def test_solve_is_ephemeral_by_default(tmp_path):
     client = StubChatClient([text("the answer")])
-    h = Harness(HarnessConfig(root_dir=tmp_path / "r"), client=client)
+    h = Tether(TetherConfig(root_dir=tmp_path / "r"), client=client)
     result = h.solve("go")
     assert result.final_text == "the answer"
     assert not (tmp_path / "r").exists()             # one-shot reaped its workspace
@@ -14,7 +14,7 @@ def test_solve_is_ephemeral_by_default(tmp_path):
 
 def test_solve_keep_retains_workspace(tmp_path):
     client = StubChatClient([text("the answer")])
-    h = Harness(HarnessConfig(root_dir=tmp_path / "k"), client=client)
+    h = Tether(TetherConfig(root_dir=tmp_path / "k"), client=client)
     result = h.solve("go", keep=True)
     assert (tmp_path / "k").exists()                 # audit trail retained
     assert result.session_dir == tmp_path / "k"
@@ -24,7 +24,7 @@ def test_aopen_returns_persistent_conversation(tmp_path):
     import asyncio
 
     async def run():
-        h = Harness(HarnessConfig(root_dir=tmp_path / "base"), client=StubChatClient([text("x")]))
+        h = Tether(TetherConfig(root_dir=tmp_path / "base"), client=StubChatClient([text("x")]))
         conv = await h.aopen("t1")
         same = await h.aopen("t1")
         assert conv is same                          # open-or-create via the manager
@@ -44,7 +44,7 @@ def noisy(n: int) -> str:
 def test_on_status_receives_tool_events_end_to_end(tmp_path):
     events = []
     client = StubChatClient([tool_call("noisy", {"n": 1}), text("done")])
-    h = Harness(HarnessConfig(root_dir=tmp_path / "s"), client=client,
+    h = Tether(TetherConfig(root_dir=tmp_path / "s"), client=client,
                 tools=[noisy], on_status=events.append)
     result = h.solve("go")
     assert result.final_text == "done"
@@ -57,7 +57,7 @@ def test_on_status_receives_tool_events_end_to_end(tmp_path):
 def test_on_status_can_be_passed_per_call(tmp_path):
     events = []
     client = StubChatClient([tool_call("noisy", {"n": 1}), text("done")])
-    h = Harness(HarnessConfig(root_dir=tmp_path / "s2"), client=client, tools=[noisy])
+    h = Tether(TetherConfig(root_dir=tmp_path / "s2"), client=client, tools=[noisy])
     h.solve("go", on_status=events.append)                # per-call sets the sink
     assert any(e.message == "step A" for e in events)
 
@@ -67,7 +67,7 @@ def test_raising_on_status_does_not_break_the_run(tmp_path):
         raise RuntimeError("subscriber boom")
 
     client = StubChatClient([tool_call("noisy", {"n": 1}), text("done")])
-    h = Harness(HarnessConfig(root_dir=tmp_path / "s3"), client=client,
+    h = Tether(TetherConfig(root_dir=tmp_path / "s3"), client=client,
                 tools=[noisy], on_status=boom)
     result = h.solve("go")
     assert result.final_text == "done"                    # status is best-effort; run completes
@@ -87,8 +87,8 @@ def fetch_big(n: int) -> dict:
 
 
 def test_solve_sync_returns_answer_and_spills(tmp_path):
-    cfg = HarnessConfig(root_dir=tmp_path / "r", spill_threshold_bytes=64)
-    h = Harness(cfg, client=_client(), tools=[fetch_big])
+    cfg = TetherConfig(root_dir=tmp_path / "r", spill_threshold_bytes=64)
+    h = Tether(cfg, client=_client(), tools=[fetch_big])
     result = h.solve("go")
     assert result.final_text == "the answer"
     assert result.handles  # developer tool spilled
@@ -96,8 +96,8 @@ def test_solve_sync_returns_answer_and_spills(tmp_path):
 
 
 def test_asolve_matches_solve(tmp_path):
-    cfg = HarnessConfig(root_dir=tmp_path / "r2", spill_threshold_bytes=64)
-    h = Harness(cfg, client=_client(), tools=[fetch_big])
+    cfg = TetherConfig(root_dir=tmp_path / "r2", spill_threshold_bytes=64)
+    h = Tether(cfg, client=_client(), tools=[fetch_big])
     result = asyncio.run(h.asolve("go"))
     assert result.final_text == "the answer"
     assert result.handles
@@ -109,8 +109,8 @@ class _FailingClient(StubChatClient):
 
 
 def test_solve_preserves_error_on_agent_failure(tmp_path):
-    cfg = HarnessConfig(root_dir=tmp_path / "err")
-    h = Harness(cfg, client=_FailingClient([text("unused")]), tools=[])
+    cfg = TetherConfig(root_dir=tmp_path / "err")
+    h = Tether(cfg, client=_FailingClient([text("unused")]), tools=[])
     result = h.solve("go", keep=True)       # keep retains the work-so-far / audit trail
     assert result.error is not None
     assert "RuntimeError" in result.error

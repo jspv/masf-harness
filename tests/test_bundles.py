@@ -1,8 +1,8 @@
-from harness import HarnessConfig, Session
+from tether import TetherConfig, Session
 
 
 def _session(tmp_path):
-    return Session.create(HarnessConfig(root_dir=tmp_path / "r"))
+    return Session.create(TetherConfig(root_dir=tmp_path / "r"))
 
 
 def test_tools_for_code_bundle_includes_core(tmp_path):
@@ -29,16 +29,16 @@ def test_read_document_is_in_web_bundle(tmp_path):
 
 def test_web_instructions_mention_read_document(tmp_path):
     sess = _session(tmp_path)
-    assert "read_document" in sess.harness_instructions("web")
+    assert "read_document" in sess.tether_instructions("web")
 
 
-def test_harness_instructions_compose_by_bundle(tmp_path):
+def test_tether_instructions_compose_by_bundle(tmp_path):
     sess = _session(tmp_path)
-    core_only = sess.harness_instructions()  # always includes core
+    core_only = sess.tether_instructions()  # always includes core
     assert "handle" in core_only.lower()
-    with_code = sess.harness_instructions("code")
+    with_code = sess.tether_instructions("code")
     assert "run_python" in with_code
     assert "load(" in with_code
     # web fragment only appears when web is selected
-    assert "web_search" not in sess.harness_instructions("code")
-    assert "web_search" in sess.harness_instructions("web")
+    assert "web_search" not in sess.tether_instructions("code")
+    assert "web_search" in sess.tether_instructions("web")

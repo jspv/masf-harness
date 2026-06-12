@@ -1,24 +1,24 @@
 import asyncio
 
-from harness import HarnessConfig
-from harness.conversation import Conversation
-from harness.testing import StubChatClient, text, tool_call
+from tether import TetherConfig
+from tether.conversation import Conversation
+from tether.testing import StubChatClient, text, tool_call
 
 
 def _save(hid, value):
-    return tool_call("run_python", {"code": f"from harness_sandbox import save\nsave({hid!r}, {value!r})\n"})
+    return tool_call("run_python", {"code": f"from tether_sandbox import save\nsave({hid!r}, {value!r})\n"})
 
 
 def test_conversation_persists_workspace_across_turns(tmp_path):
     # StubChatClient consumes its script linearly across run() calls, so 4 steps = 2 turns.
     client = StubChatClient([
         _save("h1", {"x": 1}), text("saved"),
-        tool_call("run_python", {"code": "from harness_sandbox import load, save\nsave('h2', load('h1'))\n"}),
+        tool_call("run_python", {"code": "from tether_sandbox import load, save\nsave('h2', load('h1'))\n"}),
         text("done"),
     ])
 
     async def run():
-        conv = await Conversation.acreate(id="c1", config=HarnessConfig(root_dir=tmp_path / "r"),
+        conv = await Conversation.acreate(id="c1", config=TetherConfig(root_dir=tmp_path / "r"),
                                           client=client, tools=[], bundles=("code",))
         r1 = await conv.aask("save it")
         r2 = await conv.aask("reload it")            # turn 2 reuses the same workspace
@@ -36,7 +36,7 @@ def test_conversation_keep_on_close(tmp_path):
     client = StubChatClient([text("hi")])
 
     async def run():
-        conv = await Conversation.acreate(id="c2", config=HarnessConfig(root_dir=tmp_path / "k"),
+        conv = await Conversation.acreate(id="c2", config=TetherConfig(root_dir=tmp_path / "k"),
                                           client=client, tools=[], bundles=(), reap_on_close=False)
         await conv.aask("hello")
         root = conv.session.root
@@ -51,7 +51,7 @@ def test_conversation_aclose_is_idempotent(tmp_path):
     client = StubChatClient([text("hi")])
 
     async def run():
-        conv = await Conversation.acreate(id="c4", config=HarnessConfig(root_dir=tmp_path / "i"),
+        conv = await Conversation.acreate(id="c4", config=TetherConfig(root_dir=tmp_path / "i"),
                                           client=client, tools=[], bundles=())
         await conv.aask("hello")
         await conv.aclose()
@@ -66,7 +66,7 @@ def test_conversation_error_is_non_fatal(tmp_path):
             raise RuntimeError("model boom")
 
     async def run():
-        conv = await Conversation.acreate(id="c3", config=HarnessConfig(root_dir=tmp_path / "e"),
+        conv = await Conversation.acreate(id="c3", config=TetherConfig(root_dir=tmp_path / "e"),
                                           client=_Boom([text("x")]), tools=[], bundles=())
         r = await conv.aask("go")                    # error captured, conversation survives
         ok = r.error is not None and "RuntimeError" in r.error

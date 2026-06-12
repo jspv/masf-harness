@@ -1,12 +1,12 @@
 import httpx
 import pytest
 
-from harness import HarnessConfig, Session
-from harness.tools.fetch import fetch_url
+from tether import TetherConfig, Session
+from tether.tools.fetch import fetch_url
 
 
 def _session(tmp_path):
-    return Session.create(HarnessConfig(root_dir=tmp_path / "r"))
+    return Session.create(TetherConfig(root_dir=tmp_path / "r"))
 
 
 def _client(handler):
@@ -44,7 +44,7 @@ def test_fetch_rejects_disallowed_scheme(tmp_path):
 def test_fetch_truncates_body_over_max_bytes(tmp_path):
     # An over-large body is truncated (and flagged), not a hard failure -- the agent can
     # still search/inspect what came back.
-    cfg = HarnessConfig(root_dir=tmp_path / "r")
+    cfg = TetherConfig(root_dir=tmp_path / "r")
     cfg.fetch.max_bytes = 5
     sess = Session.create(cfg)
 
@@ -97,9 +97,9 @@ def test_fetch_follows_redirects(tmp_path):
 
 
 def test_default_client_has_user_agent_and_follows_redirects(tmp_path):
-    from harness.tools.fetch import _default_client
+    from tether.tools.fetch import _default_client
 
-    c = _default_client(HarnessConfig().fetch)
+    c = _default_client(TetherConfig().fetch)
     try:
         assert c.follow_redirects is True
         assert "Mozilla" in c.headers["user-agent"]

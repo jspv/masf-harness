@@ -1,8 +1,8 @@
-from harness.config import HarnessConfig, SearchConfig
+from tether.config import TetherConfig, SearchConfig
 
 
 def test_search_config_defaults():
-    cfg = HarnessConfig()
+    cfg = TetherConfig()
     assert isinstance(cfg.search, SearchConfig)
     assert cfg.search.provider == "tavily"
     assert cfg.search.api_key is None
@@ -11,4 +11,4 @@ def test_search_config_defaults():
 
 
 def test_search_config_independent_between_instances():
-    assert HarnessConfig().search is not HarnessConfig().search
+    assert TetherConfig().search is not TetherConfig().search
