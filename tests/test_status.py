@@ -1,3 +1,4 @@
+import asyncio
 import threading
 
 from harness.status import StatusBus, StatusEvent, bind_bus, current_bus, report_progress
@@ -70,3 +71,23 @@ def test_emit_from_worker_thread_reaches_subscriber():
     th.start()
     th.join()
     assert got and got[0].message == "from thread"
+
+
+def test_bind_bus_enter_and_exit_in_different_tasks_does_not_raise():
+    # A continuous Session binds the bus on open (one request's task) and unbinds on close
+    # (another task). bind_bus must restore with set(), not reset(token) — otherwise the exit
+    # raises "Token was created in a different Context".
+    bus = StatusBus()
+
+    async def run():
+        holder = {}
+
+        async def enter():
+            cm = bind_bus(bus)
+            cm.__enter__()              # __enter__ runs in this child task's context
+            holder["cm"] = cm
+
+        await asyncio.create_task(enter())
+        holder["cm"].__exit__(None, None, None)   # __exit__ in the parent task must not raise
+
+    asyncio.run(run())                  # completes without ValueError
