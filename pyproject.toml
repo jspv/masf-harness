@@ -1,9 +1,34 @@
 [project]
-name = "tether"
-version = "0.1.0"
+name = "tether-harness"
+dynamic = ["version"]
 description = "Data-integration agent harness on Microsoft Agent Framework"
 readme = "README.md"
 requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "jspv", email = "jspvgithub@twinleaf.xyz" }]
+keywords = [
+    "agent",
+    "agents",
+    "llm",
+    "microsoft-agent-framework",
+    "maf",
+    "mcp",
+    "data-integration",
+    "sandbox",
+    "ag-ui",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+    "Typing :: Typed",
+]
 dependencies = [
     "agent-framework-core>=1.8.1",
     "agent-framework-openai>=1.8.1",
@@ -17,6 +42,11 @@ dependencies = [
 [project.optional-dependencies]
 docling = ["docling>=2.0"]         # heavy + downloads models; opt-in. Enables read_document.
 agui = ["agent-framework-ag-ui>=1.0.0rc4"]
+
+[project.urls]
+Homepage = "https://github.com/jspv/tether"
+Repository = "https://github.com/jspv/tether"
+Issues = "https://github.com/jspv/tether/issues"
 
 [project.scripts]
 tether = "tether.cli:main"
@@ -37,8 +67,17 @@ prerelease = "allow"
 testpaths = ["tests"]
 addopts = "-q"
 
+[tool.hatch.version]
+path = "tether/__init__.py"
+
 [tool.hatch.build.targets.wheel]
 packages = ["tether"]
+
+[tool.hatch.build.targets.sdist]
+# Ship only the package; hatchling always adds the metadata files (README, LICENSE,
+# pyproject). This keeps dev cruft out of the sdist — spike script, scratch workspaces,
+# eval runs, internal design notes, and the examples' node_modules.
+only-include = ["tether"]
 
 [build-system]
 requires = ["hatchling"]
