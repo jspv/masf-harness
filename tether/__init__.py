@@ -12,7 +12,7 @@ from .manager import SessionManager
 from .status import StatusBus, StatusEvent, report_progress
 from .tools.registry import build_tools
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 __all__ = [
     "Tether", "Result", "solve",
