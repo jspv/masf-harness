@@ -52,61 +52,14 @@ def _sales_mcp() -> MCPStdioTool:
     return MCPStdioTool(name="sales", command=sys.executable, args=[str(_MCP_SERVER)])
 
 
-def _tool_call_ids(m: dict) -> list[str]:
-    return [tc.get("id") for tc in (m.get("toolCalls") or m.get("tool_calls") or []) if tc.get("id")]
-
-
-def _result_id(m: dict) -> str | None:
-    return m.get("toolCallId") or m.get("tool_call_id")
-
-
-def _heal_history(input_data: dict) -> None:
-    """Drop orphan tool calls from the replayed history so OpenAI doesn't 400.
-
-    CopilotKit replays the conversation each turn but does NOT round-trip the *results* of
-    backend (server-side) tool calls — so on turn 2 the assistant's turn-1 `function_call`
-    arrives with no matching `function_call_output`, and OpenAI rejects it ("No tool output
-    found for function call …"). We make the history self-consistent: keep only tool calls
-    that have a matching tool-result message, and drop any orphan tool-result messages. The
-    assistant's final text answer is preserved, so the model keeps the conversation context
-    and simply re-calls the tool on this turn if it needs fresh data.
-    """
-    msgs = input_data.get("messages") or []
-    result_ids = {_result_id(m) for m in msgs if m.get("role") == "tool"}
-
-    healed: list[dict] = []
-    dropped_calls: list[str] = []
-    for m in msgs:
-        if m.get("role") == "assistant" and _tool_call_ids(m):
-            keep = [tc for tc in (m.get("toolCalls") or m.get("tool_calls"))
-                    if tc.get("id") in result_ids]
-            dropped_calls += [i for i in _tool_call_ids(m) if i not in result_ids]
-            if keep:
-                m = {**m}
-                m["toolCalls" if "toolCalls" in m else "tool_calls"] = keep
-            elif m.get("content"):
-                m = {k: v for k, v in m.items() if k not in ("toolCalls", "tool_calls")}
-            else:
-                continue  # an assistant message that was *only* orphan tool calls
-        healed.append(m)
-
-    kept_ids = {i for m in healed if m.get("role") == "assistant" for i in _tool_call_ids(m)}
-    final = [m for m in healed if not (m.get("role") == "tool" and _result_id(m) not in kept_ids)]
-    dropped_results = [_result_id(m) for m in healed
-                       if m.get("role") == "tool" and _result_id(m) not in kept_ids]
-
-    input_data["messages"] = final
-    print(f"[agui] messages in={len(msgs)} out={len(final)} "
-          f"dropped_orphan_calls={dropped_calls} dropped_orphan_results={dropped_results}")
-
-
 @app.post("/agent")
 async def agent(request: Request) -> StreamingResponse:
     input_data = await request.json()      # AG-UI RunAgentInput (messages, threadId, runId, tools, state)
-    _heal_history(input_data)               # make the replayed history self-consistent (see above)
     encoder = EventEncoder()
 
     async def sse():
+        # agui_stream repairs the replayed tool-call/result ordering for us (CopilotKit emits
+        # tool results before their call, which the OpenAI API would otherwise reject).
         async for event in harness.agui_stream(input_data, tools=[_sales_mcp()]):
             yield encoder.encode(event)    # -> "data: {json}\n\n"
 
