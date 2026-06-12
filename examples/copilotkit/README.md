@@ -40,7 +40,10 @@ From the repository root:
 
 ```bash
 uv sync --prerelease=allow --extra agui
-uv run uvicorn examples.copilotkit.backend.server:app --reload --port 8000
+# Pass --extra agui to `uv run` too: a bare `uv run` re-syncs to the default deps and
+# would drop the agui extra (ag_ui / fastapi), breaking the import.
+uv run --prerelease=allow --extra agui \
+  uvicorn examples.copilotkit.backend.server:app --reload --port 8000
 ```
 
 This serves the AG-UI endpoint at `http://localhost:8000/agent`. The `sales` MCP server
