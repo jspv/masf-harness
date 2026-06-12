@@ -29,10 +29,9 @@ app = FastAPI()
 
 # Put session/sandbox output in a temp dir, NOT the default ./.harness under the repo.
 # Why: the agent's run_python writes scripts into the session dir; with `uvicorn --reload`
-# watching the repo, those writes would hot-reload the server mid-conversation, wiping the
-# in-memory SessionManager. The next message (same threadId) would then rebuild a fresh
-# conversation, and the replayed history — which contains a backend tool *call* but not its
-# output — gets rejected by the model ("No tool output found for function call").
+# watching the repo, those writes would hot-reload the server mid-conversation — aborting the
+# in-flight response and wiping the in-memory SessionManager. Keeping the session root outside
+# the watched tree avoids that; --reload then only restarts on actual source edits.
 _SESSIONS = Path(tempfile.gettempdir()) / "harness-copilotkit-sessions"
 harness = Harness(HarnessConfig(root_dir=_SESSIONS))  # default OpenAI client (needs OPENAI_API_KEY)
 

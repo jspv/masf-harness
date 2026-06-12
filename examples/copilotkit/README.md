@@ -115,21 +115,22 @@ Safari rejects (Chrome tolerates it — the classic "works in Chrome, breaks in 
 fix ships in `app/providers.tsx`: a one-time `window.fetch = window.fetch.bind(window)` that
 runs before CopilotKit mounts. If you remove that shim, use Chrome.
 
-**`INCOMPLETE_STREAM` / "terminated" / `No tool output found for function call …` after the
-agent runs code.** Cause: `uvicorn --reload` watches the repo, and the agent's `run_python`
-writes sandbox scripts into the session dir. If that dir is under the repo (the harness
-default `./.harness/...`), the write **hot-reloads the server mid-conversation** and wipes the
-in-memory session registry — then the next message (same `threadId`) rebuilds a fresh
-conversation, and the replayed history contains a backend tool *call* without its output,
-which the model rejects. This example avoids it by putting the session root in a temp dir
-(`server.py` sets `HarnessConfig(root_dir=…)`), so sandbox writes never trigger a reload.
+**`INCOMPLETE_STREAM` / "terminated" / `No tool output found for function call …` on a turn
+that follows a tool call.** Cause: CopilotKit replays the conversation each turn but emits each
+backend tool *result* message **before** the assistant message that declared the calls, while
+the OpenAI API requires the assistant `tool_calls` message first, then its results — so a
+`function_call` looks like it has no output and the request 400s. The harness fixes this in
+core: `agui_stream` reorders the replayed messages (`harness.agui.repair_tool_message_order`)
+before running the agent, so **no action is needed** here. (If you build your own AG-UI backend
+without going through `agui_stream`, you must reorder the messages yourself.)
 
-> More generally: continuous AG-UI threads that use **backend** tools rely on the live
-> server-side conversation. If that conversation is lost mid-thread (server restart, an idle
-> `idle_ttl_s` expiry, or an explicit close) *after* a backend tool call, CopilotKit's
-> replayed history can't reconstruct it — backend tool I/O isn't part of the replay. Keep
-> conversations alive (don't hot-reload; leave `idle_ttl_s` unset or generous) for threads
-> that call backend tools.
+**Server restarts mid-conversation.** `uvicorn --reload` watches the repo, and the agent's
+`run_python` writes sandbox scripts into the session dir. If that dir is under the repo (the
+harness default `./.harness/...`), the write hot-reloads the server **mid-conversation** —
+aborting the in-flight response and wiping the in-memory session registry. This example keeps
+the session root in a temp dir (`server.py` sets `HarnessConfig(root_dir=…)`), so sandbox
+writes never trigger a reload. More generally, for continuous threads, avoid losing the live
+conversation mid-thread (don't hot-reload; leave `idle_ttl_s` unset or generous).
 
 > **Versions:** `package.json` pins a known-good snapshot — `@copilotkit/* ^1.60` with
 > `@ag-ui/client 0.0.56` (the exact version `@copilotkit/runtime@1.60` depends on; keep
