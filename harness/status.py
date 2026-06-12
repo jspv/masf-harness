@@ -84,12 +84,19 @@ def current_bus() -> StatusBus | None:
 
 @contextmanager
 def bind_bus(bus: StatusBus) -> Iterator[None]:
-    """Make ``bus`` the target of ``report_progress`` for the duration of the block."""
-    token = _current.set(bus)
+    """Make ``bus`` the target of ``report_progress`` for the duration of the block.
+
+    Restores the previous value with ``set`` rather than ``reset(token)`` so the block may be
+    entered and exited in *different* asyncio tasks/contexts: a continuous ``Session`` binds on
+    open (in one request's task) and unbinds on close (in another), where ``reset(token)`` would
+    raise "Token was created in a different Context". Same-task use restores identically.
+    """
+    prev = _current.get()
+    _current.set(bus)
     try:
         yield
     finally:
-        _current.reset(token)
+        _current.set(prev)
 
 
 def report_progress(message: str, *, current: float | None = None,

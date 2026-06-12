@@ -57,14 +57,63 @@ async def merge_status(events: AsyncIterator[Any], bus: StatusBus,
         unsubscribe()
 
 
+def _call_ids(m: dict[str, Any]) -> list[str]:
+    return [tc.get("id") for tc in (m.get("toolCalls") or m.get("tool_calls") or []) if tc.get("id")]
+
+
+def _result_id(m: dict[str, Any]) -> str | None:
+    return m.get("toolCallId") or m.get("tool_call_id")
+
+
+def repair_tool_message_order(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Reorder replayed AG-UI messages into a provider-valid tool-call/result sequence.
+
+    Some AG-UI clients (e.g. CopilotKit) replay each backend tool *result* message *before* the
+    assistant message that declared the calls. The OpenAI Responses/Chat APIs require the
+    assistant ``tool_calls`` message first, immediately followed by its ``tool`` results -- the
+    inverted order makes a ``function_call`` look like it has "no tool output" and the request
+    400s. This rebuilds a valid ordering: each assistant tool-call message is emitted, then its
+    results (in call order). Tool calls with no matching result are dropped (and an assistant
+    message that becomes empty is dropped); orphan tool-result messages are dropped. Non-tool
+    messages keep their relative order. Handles both camelCase (AG-UI) and snake_case keys.
+    """
+    results_by_id: dict[str, list[dict[str, Any]]] = {}
+    for m in messages:
+        if m.get("role") == "tool" and _result_id(m):
+            results_by_id.setdefault(_result_id(m), []).append(m)  # type: ignore[arg-type]
+
+    out: list[dict[str, Any]] = []
+    for m in messages:
+        role = m.get("role")
+        if role == "tool":
+            continue                                       # re-emitted right after its assistant call
+        if role == "assistant" and _call_ids(m):
+            keep = [tc for tc in (m.get("toolCalls") or m.get("tool_calls"))
+                    if tc.get("id") in results_by_id]
+            if not keep:
+                if not m.get("content"):
+                    continue                               # assistant message was only orphan calls
+                out.append({k: v for k, v in m.items() if k not in ("toolCalls", "tool_calls")})
+                continue
+            m = {**m, ("toolCalls" if "toolCalls" in m else "tool_calls"): keep}
+            out.append(m)
+            for tc in keep:
+                out.extend(results_by_id[tc["id"]])        # results immediately after the call
+            continue
+        out.append(m)
+    return out
+
+
 async def agui_event_stream(agent: Any, bus: StatusBus, input_data: dict[str, Any],
                             **agui_kwargs: Any) -> AsyncIterator[Any]:
     """Run ``agent`` via ``AgentFrameworkAgent(**agui_kwargs)`` and overlay ``bus``'s status.
 
     ``**agui_kwargs`` (e.g. ``state_schema``, ``predict_state_config``, ``require_confirmation``,
     ``name``, ``description``) pass straight to ``AgentFrameworkAgent``, and ``input_data``
-    (messages, ``tools``, ``state``) passes straight to its ``.run`` -- so frontend tools, shared
-    state, HITL, and multi-turn all work. Raises a clear error if the agui extra is missing.
+    (messages, ``tools``, ``state``) passes to its ``.run`` -- so frontend tools, shared state,
+    HITL, and multi-turn all work. The replayed messages are first run through
+    ``repair_tool_message_order`` so a client that emits tool results before their tool-call
+    message does not 400 the provider. Raises a clear error if the agui extra is missing.
     """
     try:
         from agent_framework_ag_ui import AgentFrameworkAgent
@@ -73,6 +122,9 @@ async def agui_event_stream(agent: Any, bus: StatusBus, input_data: dict[str, An
             "AG-UI support unavailable: install the 'agui' extra (e.g. `uv sync --extra agui`)"
         ) from e
 
+    messages = input_data.get("messages")
+    if messages:
+        input_data = {**input_data, "messages": repair_tool_message_order(messages)}
     afa = AgentFrameworkAgent(agent, **agui_kwargs)
     async for event in merge_status(afa.run(input_data), bus, status_to_agui):
         yield event

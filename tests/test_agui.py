@@ -142,6 +142,50 @@ def test_agui_stream_reuses_workspace_per_thread(tmp_path):
     assert asyncio.run(run())
 
 
+def test_repair_reorders_results_after_their_tool_call():
+    # CopilotKit replays tool RESULTS before the assistant message that declared the calls;
+    # OpenAI requires the reverse. repair_tool_message_order must rebuild a valid order.
+    from harness.agui import repair_tool_message_order
+
+    msgs = [
+        {"role": "user", "content": "q"},
+        {"role": "tool", "toolCallId": "c1", "content": "r1"},
+        {"role": "tool", "toolCallId": "c2", "content": "r2"},
+        {"role": "assistant", "toolCalls": [{"id": "c1"}, {"id": "c2"}], "content": None},
+        {"role": "assistant", "content": "the answer"},
+        {"role": "user", "content": "q2"},
+    ]
+    out = repair_tool_message_order(msgs)
+    assert [m["role"] for m in out] == ["user", "assistant", "tool", "tool", "assistant", "user"]
+    assert out[1].get("toolCalls")                      # tool-call assistant comes first
+    assert out[2]["toolCallId"] == "c1" and out[3]["toolCallId"] == "c2"  # then its results, in order
+
+
+def test_repair_drops_orphan_call_but_keeps_final_answer():
+    from harness.agui import repair_tool_message_order
+
+    msgs = [
+        {"role": "assistant", "toolCalls": [{"id": "c1"}], "content": None},  # no matching result
+        {"role": "assistant", "content": "final"},
+    ]
+    out = repair_tool_message_order(msgs)
+    assert [m["role"] for m in out] == ["assistant"]    # orphan-only assistant dropped
+    assert out[0]["content"] == "final"
+
+
+def test_repair_leaves_valid_order_unchanged():
+    from harness.agui import repair_tool_message_order
+
+    msgs = [
+        {"role": "assistant", "toolCalls": [{"id": "c1"}], "content": None},
+        {"role": "tool", "toolCallId": "c1", "content": "r1"},
+        {"role": "assistant", "content": "done"},
+    ]
+    out = repair_tool_message_order(msgs)
+    assert [m["role"] for m in out] == ["assistant", "tool", "assistant"]
+    assert out[0]["toolCalls"][0]["id"] == "c1"
+
+
 def test_agui_event_stream_errors_clearly_without_the_extra(monkeypatch):
     # Simulate the extra being absent even though it's installed in this env.
     monkeypatch.setitem(sys.modules, "agent_framework_ag_ui", None)
