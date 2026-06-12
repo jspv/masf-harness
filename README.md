@@ -141,11 +141,12 @@ Your tools are wrapped as MAF agent tools automatically, and their returns pass 
 
 ## Examples and samples
 
-The quickstarts above and the guides below are each worked examples. One runnable end-to-end sample ships in the repo:
+The quickstarts above and the guides below are each worked examples. Two runnable samples ship in the repo:
 
 | Sample | Shows |
 |---|---|
-| [`examples/agui_server.py`](examples/agui_server.py) | A FastAPI endpoint that streams a harness run to an AG-UI / CopilotKit client as SSE |
+| [`examples/copilotkit/`](examples/copilotkit/) | **Full end-to-end app:** a CopilotKit chat UI + a FastAPI AG-UI backend with an **MCP server** wired in — ask a data question and watch the agent call the MCP tool, spill the result to a handle, and run sandboxed Python to answer |
+| [`examples/agui_server.py`](examples/agui_server.py) | The minimal AG-UI backend: a FastAPI endpoint that streams a harness run as SSE |
 | [Use it as a MAF agent](#use-it-as-a-maf-agent) | Building and driving the agent with the ordinary MAF agent surface (`run` / streaming / threads / workflows) |
 | [Bring your own model client](#bring-your-own-model-client) | Injecting an Azure / Foundry / custom-auth chat client |
 | [Sessions: one-shot vs continuous](#sessions-one-shot-vs-continuous) | Persistent multi-turn conversations with a shared workspace |
@@ -435,7 +436,7 @@ harness/
   api.py         Harness / solve() / Result
   cli.py         thin streaming CLI
 docs/superpowers/  design specs + phased implementation plans
-examples/          runnable samples (AG-UI server)
+examples/          runnable samples (minimal AG-UI server; full CopilotKit + MCP app)
 evals/             eval harness
 tests/             mirror of the package (unit + integration + security tests)
 ```
