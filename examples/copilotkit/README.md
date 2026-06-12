@@ -100,12 +100,24 @@ backend/
   mcp_server.py   self-contained stdio MCP server: sales_rows(region) demo tool
 frontend/
   app/api/copilotkit/route.ts   CopilotKit runtime route → AG-UI HttpAgent
-  app/layout.tsx                <CopilotKit runtimeUrl=… agent="harness">
+  app/providers.tsx             <CopilotKit …> + the Safari fetch-bind shim (see Troubleshooting)
+  app/layout.tsx                renders <Providers>
   app/page.tsx                  the page + <CopilotSidebar>
   package.json, tsconfig.json, next.config.mjs
 ```
 
-> **Versions:** `package.json` pins a known-good snapshot (`@copilotkit/* ^1.60`,
-> `@ag-ui/client 0.0.57`). CopilotKit and AG-UI move quickly; if `npm install` resolves
-> something incompatible, install the latest with the `npm install …` command above and
-> check the [CopilotKit AG-UI docs](https://docs.copilotkit.ai/) for any wiring changes.
+## Troubleshooting
+
+**`agent_connect_failed` — "Can only call Window.fetch on instances of Window".**
+This is Safari/WebKit-specific. CopilotKit runs the AG-UI `HttpAgent` connection **in the
+browser**, and `@ag-ui/client` calls a *detached* global `fetch` (`this.fetch(...)`), which
+Safari rejects (Chrome tolerates it — the classic "works in Chrome, breaks in Safari"). The
+fix ships in `app/providers.tsx`: a one-time `window.fetch = window.fetch.bind(window)` that
+runs before CopilotKit mounts. If you remove that shim, use Chrome.
+
+> **Versions:** `package.json` pins a known-good snapshot — `@copilotkit/* ^1.60` with
+> `@ag-ui/client 0.0.56` (the exact version `@copilotkit/runtime@1.60` depends on; keep
+> these aligned, or a build-time `HttpAgent`-type mismatch can appear). CopilotKit and AG-UI
+> move quickly; if `npm install` resolves something incompatible, check the
+> [CopilotKit AG-UI docs](https://docs.copilotkit.ai/) for wiring changes and re-align the
+> `@ag-ui/client` version with whatever `@copilotkit/runtime` pulls in.
