@@ -61,7 +61,7 @@ Flags:
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `--model` | `gpt-5-mini` | Model name (any provider via the MAF OpenAI client) |
+| `--model` | `gpt-5-mini` | Model for the built-in OpenAI client (reads `OPENAI_API_KEY`, or `AZURE_OPENAI_*` for Azure routing). The CLI uses that client; for other providers drive the harness from Python with your own client — see [As a standard MAF agent](#as-a-standard-maf-agent) |
 | `--root` | a fresh session dir | Workspace root (the confinement boundary) |
 | `-v`, `--verbose` | off | Print live tool status to stderr as the task runs (see [Live status updates](#live-status-updates)) |
 
@@ -81,6 +81,9 @@ def query_sales(region: str) -> list[dict]:
     """Return sales rows for a region."""
     ...
 
+# With no client passed, the harness builds the default OpenAI client (reads OPENAI_API_KEY).
+# `model` configures ONLY that default client — to use Azure / Foundry / any other provider,
+# pass your own MAF chat client (see "As a standard MAF agent" below); `model` is then ignored.
 h = Harness(HarnessConfig(model="gpt-5-mini"))
 result = h.solve(
     "Total EU revenue in 2025, excluding invalid rows?",
@@ -95,6 +98,8 @@ result.error        # None, or a string if the run failed (e.g. context overflow
 ```
 
 Your tools are wrapped as MAF agent tools automatically, and their returns pass through the same spill middleware — so tool-produced and code-produced data are identical kinds of handle.
+
+> **Model provider:** the convenience entry points (`solve`, `Harness(...)` with no `client`) use MAF's OpenAI client by default — following [MAF's own Python convention](https://github.com/microsoft/agent-framework/blob/main/python/README.md) (`OPENAI_API_KEY` present → OpenAI). The harness is **not** OpenAI-only: pass `client=<any MAF chat client>` to `Harness(...)` to use Azure OpenAI, Foundry, or anything implementing MAF's chat-client protocol. The [As a standard MAF agent](#as-a-standard-maf-agent) section shows how, including an Azure example with a custom token provider.
 
 ### As a standard MAF agent
 
@@ -132,6 +137,39 @@ asyncio.run(main())
 ```
 
 Because the returned object is a standard MAF `Agent`, it composes anywhere a MAF agent is expected — as a workflow node, a sub-agent, or behind the AG-UI wrapper (`agui_stream` does exactly this with `conv.agent`). Construction goes through MAF's own `create_harness_agent(client, …)` factory, so apart from the workspace two-step and the spill-wrapping of your tools, you are building and running an ordinary MAF agent.
+
+#### Bring your own model client (Azure, Foundry, custom auth)
+
+The harness never authenticates a client for you when you supply one — it only needs an object implementing MAF's chat-client protocol (`SupportsChatGetResponse`). The same client is reused across one-shots and every continuous conversation. Two injection points:
+
+```python
+# High-level facade — your client flows to solve / aopen / agui_stream
+h = Harness(HarnessConfig(), client=my_client)
+
+# Composable path — pass it straight to create_agent
+agent = await session.create_agent(my_client, agent_instructions="…", tools=[…])
+```
+
+MAF's `OpenAIChatClient` already does Azure routing. For Azure with a **refreshing token provider**:
+
+```python
+from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+from agent_framework.openai import OpenAIChatClient
+from harness import Harness, HarnessConfig
+
+token_provider = get_bearer_token_provider(      # fresh bearer token per call → handles refresh
+    DefaultAzureCredential(), "https://cognitiveservices.azure.com/.default")
+
+client = OpenAIChatClient(
+    azure_endpoint="https://my-resource.openai.azure.com",
+    api_version="2024-10-21",
+    credential=token_provider,
+    model="my-gpt-5-deployment",                 # Azure deployment name
+)
+h = Harness(HarnessConfig(), client=client)      # config.model is ignored; the client carries it
+```
+
+If you already hold a fully-built MAF chat client (your own custom-auth Azure/Foundry/OpenAI-compatible client), skip all of the above and just pass it: `Harness(HarnessConfig(), client=that)`.
 
 ### Sessions: one-shot vs continuous
 
